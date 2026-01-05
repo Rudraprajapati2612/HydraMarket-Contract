@@ -1,0 +1,16 @@
+[workspace]
+members = [
+  "programs/market-registry",
+  "programs/escrow-vault",
+  "programs/resolution-adapter"
+]
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[registry]
+url = "https://api.apr.dev"
+
+[scripts]
+test = "yarn ts-mocha -p tsconfig.json -t 1000000 tests/**/*.test.ts"
