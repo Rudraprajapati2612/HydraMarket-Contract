@@ -55,7 +55,7 @@ pub struct MarketInitialize<'info>{
 }
 
 
-pub fn handeler(ctx:Context<MarketInitialize>,params : InitializeMarketParams)->Result<()>{
+pub fn handler(ctx:Context<MarketInitialize>,params : InitializeMarketParams)->Result<()>{
     
     let clock = Clock::get()?;
 

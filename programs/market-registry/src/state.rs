@@ -155,5 +155,6 @@ pub enum MarketState{
     Close,
     Created,
     Resolved,
-    Resolving
+    Resolving,
+    Paused
 }
