@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "programs/market-registry",
+  "programs/escrow-vault",
 ]
 
 [provider]

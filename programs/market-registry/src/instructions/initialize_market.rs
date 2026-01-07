@@ -46,7 +46,7 @@ pub struct MarketInitialize<'info>{
         seeds = [b"escrow_vault",market.key().as_ref()],
         bump,
         // comment this for now 
-        // seeds::program = escrow_program.key()
+        seeds::program = escrow_program.key()
     )]
     pub escrow_vault : UncheckedAccount<'info>,
     // used unchecked account when it is used by another account 
