@@ -1,4 +1,3 @@
-use std::i64;
 
 use anchor_lang::prelude::*;
 use crate::error::MarketRegistryError;
@@ -21,9 +20,9 @@ pub struct Market{
 
     pub expire_at : i64,
     pub state : MarketState,
-    pub yes_mint_token:Pubkey,
+    pub yes_token_mint:Pubkey,
 
-    pub no_mint_token:Pubkey,
+    pub no_token_mint:Pubkey,
 
     pub escrow_vault : Pubkey,
     pub resolution_adapter:Pubkey,

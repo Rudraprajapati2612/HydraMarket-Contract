@@ -1,13 +1,13 @@
 [workspace]
 members = [
   "programs/market-registry",
-  "programs/escrow-vault",
-  "programs/resolution-adapter"
 ]
 
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
+[programs.localnet]
+market_registry = "2bRruB58Pk39PRz2wpAhSjURJMKpWoZdpiozzRLruqyU"
 
 [registry]
 url = "https://api.apr.dev"
