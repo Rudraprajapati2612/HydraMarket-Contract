@@ -9,6 +9,9 @@ pub enum MarketRegistryError {
     #[msg("Invalid market state for this operation")]
     InvalidMarketState,
 
+    #[msg("Market is not Open Yet")]
+    MarketNotOpen,
+    
     #[msg("Market has already been resolved")]
     MarketAlreadyResolved,
 

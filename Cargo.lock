@@ -664,6 +664,7 @@ dependencies = [
  "anchor-spl",
  "borsh 0.10.4",
  "borsh-derive 0.10.4",
+ "market-registry",
  "solana-program",
 ]
 

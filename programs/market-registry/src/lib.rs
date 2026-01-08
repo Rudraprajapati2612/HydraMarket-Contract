@@ -17,6 +17,8 @@ declare_id!("2bRruB58Pk39PRz2wpAhSjURJMKpWoZdpiozzRLruqyU");
 #[program]
 pub mod market_registry{
     
+    use anchor_spl::token_interface::CpiGuardBumps;
+
     use super::*;
 
     pub fn initialize_market(ctx:Context<MarketInitialize>,params : InitializeMarketParams)->Result<()>{
@@ -46,5 +48,13 @@ pub mod market_registry{
     pub fn update_market_metadata(ctx:Context<UpdateMarketMetadata>,params:UpdateMarketMetaDataParams)->Result<()>{
         
         instructions::update_market_metadata::handler(ctx, params)
+    }
+
+    pub fn assert_market_open(ctx:Context<AssertMarketOpen>)->Result<()>{
+        instructions::assert_market_open::handler(ctx)
+    }
+
+    pub fn assert_market_resolved(ctx:Context<AssertMarketResolved>)->Result<()>{
+        instructions::assert_market_resolved::handler(ctx)
     }
 }

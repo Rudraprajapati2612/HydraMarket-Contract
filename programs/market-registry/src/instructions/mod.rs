@@ -5,7 +5,8 @@ pub mod pause_market;
 pub mod cancel_market;
 pub mod resume_market;
 pub mod update_market_metadata;
-
+pub mod assert_market_open;
+pub mod assert_market_resolved;
 
 pub use initialize_market::*;
 pub use finalize_market::*;
@@ -14,3 +15,5 @@ pub use pause_market::*;
 pub use cancel_market::*;
 pub use resume_market::*;
 pub use update_market_metadata::*;
+pub use  assert_market_open::*;
+pub use  assert_market_resolved::*;
