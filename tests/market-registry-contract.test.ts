@@ -1,128 +1,182 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey, PublicKeyInitData, SYSVAR_RENT_PUBKEY, SystemProgram } from "@solana/web3.js";
-import { MarketRegistry } from "../target/types/market_registry";
+import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web3.js";
+import { expect, use } from "chai";
+import { MarketRegistry     } from "../target/types/market_registry";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { expect } from "chai";
-describe("Market Registery Contract",()=>{
-    const provider = anchor.AnchorProvider.env();
-    anchor.setProvider(provider);
-    const program = anchor.workspace.MarketRegistry as Program<MarketRegistry>;
+
+describe("Market Registery Complete Tests",()=>{
+    const provider = anchor.AnchorProvider.env()
+    anchor.setProvider(provider)
+
+    const program  = anchor.workspace.MarketRegistry as Program<MarketRegistry>;
+
+    // declare all the keywords and variable 
+    
     let admin : Keypair;
-    let marketAccount : PublicKey;
-    let yesTokenMint : Keypair;
-    let noMintToken : Keypair;
-    let escrowVault : PublicKey;
-    let escrowProgram  : PublicKey;
-    let resolutionAdapter : PublicKey
+    let nonAdmin : Keypair
+    let user :Keypair;
 
-    // Market question 
-    const marketId = new Uint8Array(32).fill(1); 
-    const question = "Will BTC price reach $100k by end of janurary" //what to do if from admin question has some mistake ? 
-    const description = "This markete will resolve to Yes if Bitcoin $100k by the end of janurary"
-    const category = "Crypto";
-    const resolutionSource = "Pyth Network"
-
-    // Time 
-    const nowTimestamp = Math.floor(Date.now()/1000);
-    const expiredAt = nowTimestamp + (30 * 24 * 60 * 60);
+    
+    // market - 1  account 
+    let market1Pda : PublicKey;
+    let market1Id : Uint8Array;
+    let market1YesMint : Keypair; //we need to create their mint account in test 
+    let market1NoMint : Keypair;
+    let market1EscrowVault : PublicKey; //hodl usdc for market1 
+    let market1ResolutionAdapter : PublicKey; // oracle feed 
 
 
-    before(async()=>{
-        //  airdrop solana to the admin 
-        admin = Keypair.generate();
+    // market - 2  account 
+    let market2Pda : PublicKey;
+    let market2Id : Uint8Array;
+    let market2YesMint : Keypair; //we need to create their mint account in test 
+    let market2NoMint : Keypair;
+    let market2EscrowVault : PublicKey;
+    let market2ResolutionAdapter : PublicKey;
 
-        const reqAirdropSig = await provider.connection.requestAirdrop(
-            admin.publicKey,
-            10*LAMPORTS_PER_SOL
+
+      // Mock escrow program (for testing - would be real in production)
+    let mockEscrowProgram: PublicKey;
+
+    // Time constants
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const futureExpiry = nowTimestamp + 30 * 24 * 60 * 60; // 30 days
+    const pastExpiry = nowTimestamp - 10; // Already expired
+
+
+    // Some of the helper function 
+
+    async function airdrop(pubkey :PublicKey,number =10){
+        const sig = await provider.connection.requestAirdrop(
+            pubkey,
+            number * LAMPORTS_PER_SOL
         )
-
-        // confirm transaction 
-
-        const latestblockHash = await provider.connection.getLatestBlockhash();
+        const latestBlockHash = await provider.connection.getLatestBlockhash();
 
         await provider.connection.confirmTransaction({
-            signature : reqAirdropSig,
-            blockhash : latestblockHash.blockhash,
-            lastValidBlockHeight : latestblockHash.lastValidBlockHeight
+            signature : sig,
+            blockhash : latestBlockHash.blockhash,
+            lastValidBlockHeight : latestBlockHash.lastValidBlockHeight
         })
+    }
 
-        yesTokenMint = Keypair.generate();
-        noMintToken = Keypair.generate();
+    function getMarketState(state:any){
+        if(state.created) return "CREATED";
+        if(state.open) return "OPEN";
+        if(state.paused) return "PAUSED";
+        if(state.resolving) return "RESOLVING";
+        if(state.resolved) return "RESOLVED";
+        return "UNKNOWN"
+    }
 
-        escrowProgram = Keypair.generate().publicKey;
-        resolutionAdapter = Keypair.generate().publicKey;
 
-        console.log("Admin",admin.publicKey.toString());
-        console.log("Yes Token Mint", yesTokenMint.publicKey.toString());
-        console.log("No token Mint", noMintToken.publicKey.toString());
+    // lets setup befor creating new market 
+
+    before(async ()=>{
+        console.log("Setting Up the Market");
         
+        admin = Keypair.generate();
+        nonAdmin = Keypair.generate();
+        user = Keypair.generate();
+        
+        // airdrop solana to all the users 
+
+        await Promise.all([
+            airdrop(admin.publicKey),
+            airdrop(nonAdmin.publicKey),
+            airdrop(user.publicKey)
+        ])
+
+        mockEscrowProgram  = Keypair.generate().publicKey;
+
+        market1Id = new Uint8Array(32).fill(1);
+        market2Id = new Uint8Array(32).fill(2);
+        console.log("📋 Account Setup:");
+        console.log("  Admin:", admin.publicKey.toString());
+        console.log("  Non-Admin:", nonAdmin.publicKey.toString());
+        console.log("  User:", user.publicKey.toString());
+        console.log("  Mock Escrow Program:", mockEscrowProgram.toString());
+        console.log("\n✅ Setup complete!\n");
     })
 
-    describe("Initialize Market",()=>{
-        it("Should sucessfully initialize a new market",async ()=>{
-            const [marketPda,marketBump] = PublicKey.findProgramAddressSync(
-                [Buffer.from("market"), Buffer.from(marketId)],
-                program.programId
-            )
-            marketAccount = marketPda
 
-            const [escrowVaultPda] = PublicKey.findProgramAddressSync(
-                [Buffer.from("escrow_vault"), marketPda.toBuffer()],
-                // change this to escrow program After depoloying time 
-                program.programId
-            )
 
-            escrowVault = escrowVaultPda
-            console.log("Market PDA:", marketAccount.toString());
-            console.log("Escrow Vault PDA:", escrowVault.toString());
+
+    // Market Initialization Tests
+    describe("Market Initialize",()=>{
+        it("Should Successfully initialize a new market",async ()=>{
+            console.log("Initialize new Market");
+            
+            market1YesMint = Keypair.generate();
+            market1NoMint = Keypair.generate();
+                // market account Is a pda 
+                // market accoutn is derived from the Seed = Market + Market ID + Program ID
+            [market1Pda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("market"), Buffer.from(market1Id)],
+                program.programId
+            );
+
+            [market1EscrowVault] = PublicKey.findProgramAddressSync(
+                [Buffer.from("escrow_vault"), market1Pda.toBuffer()],
+                mockEscrowProgram
+            );
+
+            market1ResolutionAdapter = Keypair.generate().publicKey;
+
+            const question  = "Will BTC reach $100k by the end of janurary 2026";
+            const description = "Market will resolve yes if Bitcoin will resovle yes"
+            const category = "Crypto";
+            const resolutionSource = "Pyth BTC/USD"
 
             const params = {
-                marketId : Array.from(marketId),
+                marketId : Array.from(market1Id),
                 question,
                 description,
                 category,
-                expireAt : new anchor.BN(expiredAt),
+                expireAt : new anchor.BN(futureExpiry),
                 resolutionSource
             }
 
+            await program.methods.initializeMarket(params).accounts({
 
-            const tx = await program.methods.initializeMarket(params).accounts({
                 admin : admin.publicKey,
-                // @ts-ignore
-                market : marketAccount,
-                yesTokenMint : yesTokenMint.publicKey,
-                noTokenMint : noMintToken.publicKey,
-                escrowVault : escrowVault,
-                escrowProgram:escrowProgram,
-                resolutionAdapter : resolutionAdapter,
+                market : market1Pda,
+                yesTokenMint : market1YesMint.publicKey,
+                noTokenMint : market1NoMint.publicKey,
+                escrowVault : market1EscrowVault,
+                escrowProgram : mockEscrowProgram,
+                resolutionAdapter : market1ResolutionAdapter,
                 systemProgram : SystemProgram.programId,
                 tokenProgram : TOKEN_PROGRAM_ID,
-                rent : SYSVAR_RENT_PUBKEY 
-            }).signers([admin,yesTokenMint,noMintToken]).rpc()
+                rent : anchor.web3.SYSVAR_RENT_PUBKEY
+            }).signers([admin,market1YesMint,market1NoMint]).rpc()
 
+            // fetch the market 
 
-            const marketData = await program.account.market.fetch(marketAccount);
-            expect(marketData.question).to.equal(question);
-            expect(marketData.description).to.equal(description);
-            expect(marketData.category).to.equal(category);
-            expect(marketData.creator.toString()).to.equal(admin.publicKey.toString());
-            expect(marketData.expireAt.toNumber()).to.equal(expiredAt);
-            expect(marketData.yesTokenMint.toString()).to.equal(yesTokenMint.publicKey.toString());
-            expect(marketData.noTokenMint.toString()).to.equal(noMintToken.publicKey.toString());
-            expect(marketData.escrowVault.toString()).to.equal(escrowVault.toString());
-            expect(marketData.resolutionAdapter.toString()).to.equal(resolutionAdapter.toString());
-            expect(marketData.resolutionSource).to.equal(resolutionSource);
-            
-            // Check initial state
-            expect(marketData.state).to.deep.equal({ created: {} });
-            expect(marketData.resolutionOutcome).to.be.null;
-             expect(marketData.resolvedAt).to.be.null;
+            const market = await program.account.market.fetch(market1Pda);
 
-            console.log("✅ Market initialized successfully!");
-            console.log("Market State:", marketData.state);
+            expect(market.marketId).to.deep.equal(Array.from(market1Id));
+            expect(market.question).to.equal(question);
+            expect(market.description).to.equal(description);
+            expect(market.category).to.equal(category);
+            expect(market.creator.toString()).to.equal(admin.publicKey.toString());
+            expect(market.expireAt.toNumber()).to.equal(futureExpiry);
+            expect(market.yesTokenMint.toString()).to.equal(market1YesMint.publicKey.toString());
+            expect(market.noTokenMint.toString()).to.equal(market1NoMint.publicKey.toString());
+            expect(market.escrowVault.toString()).to.equal(market1EscrowVault.toString());
+            expect(market.resolutionAdapter.toString()).to.equal(market1ResolutionAdapter.toString());
+            expect(market.resolutionSource).to.equal(resolutionSource);
+            expect(getMarketState(market.state)).to.equal("CREATED");
+            expect(market.resolutionOutcome).to.be.null;
+            expect(market.resolvedAt).to.be.null;
+
+            console.log("✅ Market 1 initialized successfully");
+            console.log("   State:", getMarketState(market.state));
+            console.log("   Market PDA:", market1Pda.toString());
         })
-
     })
+
+
 
 })

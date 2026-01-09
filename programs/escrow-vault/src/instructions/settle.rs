@@ -17,6 +17,7 @@ pub struct Settle<'info>{
     )]
     pub vault : Account<'info,EscrowVault>,
 
+    /// CHECK: We validate market is resolved
     #[account(
         constraint = market.key() == vault.market @ EscrowVaultError::MarketRegistryMismatch
     )]

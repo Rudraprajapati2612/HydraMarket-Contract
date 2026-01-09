@@ -17,7 +17,7 @@ declare_id!("2bRruB58Pk39PRz2wpAhSjURJMKpWoZdpiozzRLruqyU");
 #[program]
 pub mod market_registry{
     
-    use anchor_spl::token_interface::CpiGuardBumps;
+   
 
     use super::*;
 

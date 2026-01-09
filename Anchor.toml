@@ -9,6 +9,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 [programs.localnet]
 market_registry = "2bRruB58Pk39PRz2wpAhSjURJMKpWoZdpiozzRLruqyU"
+escrow_vault = "7naTChgbgNS8cUoMbfKoYA8qomHJVUf5oeVjv9iSmiyf"
 
 [registry]
 url = "https://api.apr.dev"
