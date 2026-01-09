@@ -86,6 +86,12 @@ pub struct InitializeMarketParams{
 
 impl InitializeMarketParams{
     pub fn validate(&self,current_timestamp:i64)->Result<()>{
+        // check for question length 0 
+        require!(
+            !self.question.trim().is_empty(),
+            MarketRegistryError::QuestionEmpty
+        );
+        
         // validate question length 
         require!(self.question.len()<=MAX_QUESTION_LENGTH,MarketRegistryError::QuestionTooLong);
 

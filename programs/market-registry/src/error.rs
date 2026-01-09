@@ -12,6 +12,9 @@ pub enum MarketRegistryError {
     #[msg("Market is not Open Yet")]
     MarketNotOpen,
     
+    #[msg("Question cannot be empty")]
+    QuestionEmpty,
+  
     #[msg("Market has already been resolved")]
     MarketAlreadyResolved,
 

@@ -70,6 +70,59 @@ describe("Market Registery Complete Tests",()=>{
         return "UNKNOWN"
     }
 
+    async function createMarket(marketId : Uint8Array , question : string , expireAt : number , signer : Keypair = admin){
+       const yesMint = Keypair.generate();
+       const noMint = Keypair.generate();
+
+       const [marketPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("market") , Buffer.from(marketId)],
+        program.programId
+       );
+
+       const [escrowVaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("escrow_vault"),marketPda.toBuffer()],
+        mockEscrowProgram
+       );
+
+       const resolutionAdapter  = Keypair.generate().publicKey;
+
+       const params = {
+        marketId : Array.from(marketId),
+        question,
+        description : `Test market : ${question}`,
+        category : "Test",
+        expireAt :new anchor.BN(expireAt),
+        resolutionSource: "Test Oracle" 
+       }
+
+       await program.methods
+      .initializeMarket(params)
+      .accounts({
+        admin: signer.publicKey,
+        market: marketPda,
+        yesTokenMint: yesMint.publicKey,
+        noTokenMint: noMint.publicKey,
+        escrowVault: escrowVaultPda,
+        escrowProgram: mockEscrowProgram,
+        resolutionAdapter,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([signer, yesMint, noMint])
+      .rpc();
+
+    return {
+      marketPda,
+      yesMint,
+      noMint,
+      escrowVaultPda,
+      resolutionAdapter,
+    };
+
+
+
+    }
 
     // lets setup befor creating new market 
 
@@ -171,10 +224,127 @@ describe("Market Registery Complete Tests",()=>{
             expect(market.resolutionOutcome).to.be.null;
             expect(market.resolvedAt).to.be.null;
 
-            console.log("✅ Market 1 initialized successfully");
+            console.log(" Market 1 initialized successfully");
             console.log("   State:", getMarketState(market.state));
             console.log("   Market PDA:", market1Pda.toString());
         })
+
+        it(" Should Create a second market with different ID ",async ()=>{
+            console.log("Initalize Market 2 ");
+            
+
+            const result = await createMarket(market2Id,"WIll SOl Reach 200$ Before jan",futureExpiry);
+
+            market2Pda = result.marketPda;
+            market2YesMint = result.yesMint;
+            market2NoMint = result.noMint;
+            market2EscrowVault = result.escrowVaultPda;
+            market2ResolutionAdapter = result.resolutionAdapter;
+
+            const market  = await program.account.market.fetch(market2Pda);
+
+            expect(market.marketId).to.deep.equal(Array.from(market2Id));
+            expect(getMarketState(market.state)).to.equal("CREATED");
+
+            console.log(" Market 2 initialized successfully");
+            console.log("   Market PDA:", market2Pda.toString());
+        })
+
+
+
+        it("Should fail to Create Duplicate Market (Same Market Id)",async ()=>{
+            try{
+                await createMarket(market1Id, "Duplicate Market" , futureExpiry);
+
+                expect.fail("No new market is created")
+            }catch(e){
+                expect(e.message).to.include("already in use");
+                console.log(" Correctly rejected duplicate market ID");
+            }
+        })
+
+
+        it("Should fialed with  the invalid expire Date",async()=>{
+            console.log("Testing past expire");
+            
+            const marketId = new Uint8Array(32).fill(21);
+
+            try{
+                await createMarket(marketId,"Past expire",pastExpiry);
+                expect.fail("Past expire Market is not created")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InvalidExpiryTimestamp");
+                console.log(" Correctly rejected past expiry");
+            }
+        })
+
+
+        it("Should Failed wtih empty Question",async()=>{
+            const marketId = new Uint8Array(32).fill(22);
+
+            const yesMint = Keypair.generate();
+            const noMint = Keypair.generate();
+
+            const [marketPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("market"),Buffer.from(marketId)],
+                program.programId
+            );
+
+            const [escrowVaultPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("escrow_vault"),marketPda.toBuffer()],
+                mockEscrowProgram
+            );
+
+            const params = {
+                marketId : Array.from(marketId),
+                question : "",
+                description : "Test",
+                category : "Sports",
+                expireAt : new anchor.BN(futureExpiry),
+                resolutionSource : "Test"
+            }
+
+
+            try{
+                await program.methods.initializeMarket(params).accounts({
+                    admin: admin.publicKey,
+                    market: marketPda,
+                    yesTokenMint: yesMint.publicKey,
+                    noTokenMint: noMint.publicKey,
+                    escrowVault: escrowVaultPda,
+                    escrowProgram: mockEscrowProgram,
+                    resolutionAdapter: Keypair.generate().publicKey,
+                    systemProgram: SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                }).signers([admin,yesMint,noMint]).rpc();
+
+                expect.fail("Should have thrown error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("QuestionEmpty");
+                console.log(" Correctly rejected empty question");
+            }
+        })
+
+        it("Should Fail With Long Question",async()=>{
+            console.log("Testing Failing Due to Long Question");
+
+            const marketId = new Uint8Array(32).fill(26);
+            const question = "R".repeat(201);
+            try{
+                await createMarket(marketId,question,futureExpiry);
+                expect.fail("Should have thrown Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("QuestionTooLong");
+                console.log("Rejected Long Question");
+                
+            }
+        })
+
+
+
+
+
     })
 
 
