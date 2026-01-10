@@ -74,7 +74,7 @@ pub fn handler (ctx:Context<MintPairs> , pairs:u64)->Result<()>{
     let clock = Clock::get()?;
     // check for pair is greater than 0
     require!(pairs>0,EscrowVaultError::InvalidPairCount);
-    // check vault can mint now so for it track for settled and is_minting pause 
+    // check vault can mint now so for it track for settled and is_minting pause  -> Means if market is settel and minting is paused then we cant mint 
     // let say if market is not settled yet and minting is not paused then we can say market is open and its we can mint 
     require!(vault.can_mint(),EscrowVaultError::MintingPaused);
     // TODO validate state of market is open 

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
-
+use anchor_spl::associated_token::AssociatedToken;
 use crate::{constants::{OUTCOME_TOKEN_DECIMALS, VAULT_SEED}, events::VaultInitialized, state::EscrowVault
     };
 
@@ -27,10 +27,11 @@ pub struct InitializeVault<'info>{
     #[account(
         init,
         payer = admin,
-        token::mint = usdc_mint,
-        token::authority = vault
+        associated_token::mint = usdc_mint,
+        associated_token::authority = vault
     )]
-    pub usdc_vault : Account<'info,TokenAccount>,
+    pub usdc_vault: Account<'info, TokenAccount>,
+    
     // validate this is a usdc  
     pub usdc_mint : Account<'info,Mint>,
     #[account(
@@ -47,7 +48,8 @@ pub struct InitializeVault<'info>{
 
     pub system_program : Program<'info,System>,
 
-    pub token_program : Program<'info,Token>
+    pub token_program : Program<'info,Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 
