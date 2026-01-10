@@ -45,6 +45,9 @@ pub mod market_registry{
         instructions::cancel_market::handler(ctx)
     }
 
+    pub fn resolving_market(ctx:Context<ResolvingMarket>)->Result<()>{
+        instructions::resolving_market::handler(ctx)
+    }
     pub fn update_market_metadata(ctx:Context<UpdateMarketMetadata>,params:UpdateMarketMetaDataParams)->Result<()>{
         
         instructions::update_market_metadata::handler(ctx, params)

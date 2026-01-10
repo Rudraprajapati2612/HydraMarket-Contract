@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web3.js";
 import { expect, use } from "chai";
 import { MarketRegistry     } from "../target/types/market_registry";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, calculateEpochFee } from "@solana/spl-token";
 
 describe("Market Registery Complete Tests",()=>{
     const provider = anchor.AnchorProvider.env()
@@ -99,6 +99,7 @@ describe("Market Registery Complete Tests",()=>{
       .initializeMarket(params)
       .accounts({
         admin: signer.publicKey,
+        // @ts-ignore
         market: marketPda,
         yesTokenMint: yesMint.publicKey,
         noTokenMint: noMint.publicKey,
@@ -158,6 +159,7 @@ describe("Market Registery Complete Tests",()=>{
 
     // Market Initialization Tests
     describe("Market Initialize",()=>{
+        // done 
         it("Should Successfully initialize a new market",async ()=>{
             console.log("Initialize new Market");
             
@@ -194,6 +196,7 @@ describe("Market Registery Complete Tests",()=>{
             await program.methods.initializeMarket(params).accounts({
 
                 admin : admin.publicKey,
+                // @ts-ignore
                 market : market1Pda,
                 yesTokenMint : market1YesMint.publicKey,
                 noTokenMint : market1NoMint.publicKey,
@@ -228,7 +231,7 @@ describe("Market Registery Complete Tests",()=>{
             console.log("   State:", getMarketState(market.state));
             console.log("   Market PDA:", market1Pda.toString());
         })
-
+        // done
         it(" Should Create a second market with different ID ",async ()=>{
             console.log("Initalize Market 2 ");
             
@@ -251,7 +254,7 @@ describe("Market Registery Complete Tests",()=>{
         })
 
 
-
+        // done
         it("Should fail to Create Duplicate Market (Same Market Id)",async ()=>{
             try{
                 await createMarket(market1Id, "Duplicate Market" , futureExpiry);
@@ -263,7 +266,7 @@ describe("Market Registery Complete Tests",()=>{
             }
         })
 
-
+        // done
         it("Should fialed with  the invalid expire Date",async()=>{
             console.log("Testing past expire");
             
@@ -278,7 +281,7 @@ describe("Market Registery Complete Tests",()=>{
             }
         })
 
-
+        // done
         it("Should Failed wtih empty Question",async()=>{
             const marketId = new Uint8Array(32).fill(22);
 
@@ -308,6 +311,7 @@ describe("Market Registery Complete Tests",()=>{
             try{
                 await program.methods.initializeMarket(params).accounts({
                     admin: admin.publicKey,
+                    // @ts-ignore
                     market: marketPda,
                     yesTokenMint: yesMint.publicKey,
                     noTokenMint: noMint.publicKey,
@@ -325,7 +329,7 @@ describe("Market Registery Complete Tests",()=>{
                 console.log(" Correctly rejected empty question");
             }
         })
-
+        // done 
         it("Should Fail With Long Question",async()=>{
             console.log("Testing Failing Due to Long Question");
 
@@ -340,13 +344,155 @@ describe("Market Registery Complete Tests",()=>{
                 
             }
         })
+    })
 
+    describe("State Transition",()=>{
+        // done
+        it("Should Open Market (CREATED->OPEN) ",async ()=>{
+            console.log("Opening Market Test");
+            
+            await program.methods.openMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : market1Pda,
+            }).signers([admin]).rpc()
 
+            const market  = await program.account.market.fetch(market1Pda);
+            expect(getMarketState(market.state)).to.equal("OPEN");
+            console.log("State is Changed From Created TO Open");
+            
+        })
+        // done
+        it("Should Fail to open already Open Market",async ()=>{
+            console.log("Testing Double Open Market");
 
+            try{
+                await program.methods.openMarket().accounts({
+                    admin:  admin.publicKey,
+                    // @ts-ignore
+                    market : market1Pda
+                }).signers([admin]).rpc()
 
+                expect.fail("Throw Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InvalidMarketState");
+                console.log("Correctly Rejected Double Open");
+                
+            }
+            
+        })
+        // done 
+        it("Should Fail If Non admin tries to open market",async ()=>{
+            console.log("Testing Non admin Open market");
+
+            try{
+                await program.methods.openMarket().accounts({
+                    admin:  nonAdmin.publicKey,
+                    // @ts-ignore
+                    market : market2Pda
+                }).signers([nonAdmin]).rpc()
+
+                expect.fail("Should Throw Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("Unauthorized");
+                console.log("Non admin is rejected");  
+            }
+            
+
+          
+        })
+        // done 
+        it("Should Pause the Market (OPEN -> PAUSE)",async ()=>{
+            console.log("Pause the market");
+            
+            await program.methods.pauseMarket().accounts({
+                admin: admin.publicKey,
+                // @ts-ignore
+                market : market1Pda
+            }).signers([admin]).rpc()
+            
+            const market = await program.account.market.fetch(market1Pda);
+            expect(getMarketState(market.state)).to.equal("PAUSED");
+
+            console.log("Market 1 Paused");
+            
+        })
+        // done 
+        it("Should resume the pause market (PAUSE->OPEN)",async()=>{
+            console.log("Resume the market");
+
+            await program.methods.resumeMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : market1Pda
+            }).signers([admin]).rpc()
+
+            const market = await program.account.market.fetch(market1Pda);
+        expect(getMarketState(market.state)).to.equal("OPEN")
+        })
+
+        // done
+        it("Should Set Market To Resolving",async()=>{
+            await program.methods.resolvingMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : market1Pda
+            }).signers([admin]).rpc()
+
+            const market = await program.account.market.fetch(market1Pda);
+            expect(getMarketState(market.state)).to.equal("RESOLVING");
+
+            console.log("✅ Market 1 resumed");
+            console.log("   State:", getMarketState(market.state));
+        })
+
+        // uncomment it after completing the marketmarket outcome contract 
+
+        // it("Should Resolved The market state (Resolving->Resolved)",async()=>{
+            
+        //     await program.methods.finalizeMarket({yes:{}}).accounts({
+        //         resolutionAdapter : admin.publicKey,
+        //         market : market1Pda
+        //     }).signers([admin]).rpc()
+
+        //     const market = await program.account.market.fetch(market1Pda);
+
+        //     expect(getMarketState(market.state)).to.equal("RESOLVED");
+        //     expect(market.resolutionOutcome).to.deep.equal({yes:{}})
+        //     expect(market.resolvedAt).to.not.be.null ;
+        //     console.log("   State:", getMarketState(market.state));
+        // })
+
+        // it("Should fail to transition after RESOLVED", async () => {
+        //     console.log("\n❌ Testing transition after RESOLVED...");
+      
+        //     try {
+        //       await program.methods
+        //         .pauseMarket()
+        //         .accounts({
+        //           admin: admin.publicKey,
+        //           market: market1Pda,
+        //         })
+        //         .signers([admin])
+        //         .rpc();
+      
+        //       expect.fail("Should have thrown error");
+        //     } catch (err: any) {
+        //       expect(err.error.errorCode.code).to.equal("InvalidStateTransition");
+        //       console.log("✅ Correctly rejected transition after RESOLVED");
+        //     }
+        // });
 
     })
 
+    //  Resolution Outcome 
 
+    describe("Resolution Outcome",()=>{
+        let market3Pda : PublicKey;
+
+        before(async()=>{
+
+        })
+    })
 
 })
