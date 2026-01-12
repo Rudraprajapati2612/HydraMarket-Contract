@@ -28,7 +28,7 @@ pub struct InitializeVault<'info>{
         init,
         payer = admin,
         associated_token::mint = usdc_mint,
-        associated_token::authority = vault
+        associated_token::authority = vault   // this is the token account not pda 
     )]
     pub usdc_vault: Account<'info, TokenAccount>,
     

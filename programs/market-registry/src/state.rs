@@ -2,8 +2,8 @@
 use anchor_lang::prelude::*;
 use crate::error::MarketRegistryError;
 use crate::constants::*;
-#[account]
 
+#[account]
 pub struct Market{
     pub market_id : [u8;32],
 

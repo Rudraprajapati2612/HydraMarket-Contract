@@ -2,6 +2,7 @@
 members = [
   "programs/market-registry",
   "programs/escrow-vault",
+  "programs/resolution_adapter"
 ]
 
 [provider]

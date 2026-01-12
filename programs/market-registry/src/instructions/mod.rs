@@ -8,7 +8,7 @@ pub mod update_market_metadata;
 pub mod assert_market_open;
 pub mod assert_market_resolved;
 pub mod resolving_market;
-
+pub mod assert_market_expired;
 
 
 pub use initialize_market::*;
@@ -21,3 +21,4 @@ pub use update_market_metadata::*;
 pub use  assert_market_open::*;
 pub use  assert_market_resolved::*;
 pub use resolving_market::*;
+pub use assert_market_expired::*;

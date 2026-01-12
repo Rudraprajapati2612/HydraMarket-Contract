@@ -60,4 +60,8 @@ pub mod market_registry{
     pub fn assert_market_resolved(ctx:Context<AssertMarketResolved>)->Result<()>{
         instructions::assert_market_resolved::handler(ctx)
     }
+
+    pub fn assert_market_expired(ctx:Context<AssertMarketExpired>)->Result<()>{
+        instructions::assert_market_expired::handler(ctx)
+    }
 }
