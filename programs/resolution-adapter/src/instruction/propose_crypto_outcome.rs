@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 
-use anchor_spl::token::{Token, TokenAccount};
-use market_registry::{Market, ResultOutcome, cpi::accounts::AssertMarketExpired, program::MarketRegistry};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use market_registry::{ ResultOutcome, cpi::accounts::AssertMarketExpired, program::MarketRegistry};
 
-use crate::{constants::{MAX_DATA_SOURCES, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::CryptoPriceValidated, state::{DataSource, MarketCategory, OracleType, OracleValue, PriceCondition, ResolutionProposal}, utils::{normalize_price, read_pyth_price, validate_pyth_price}
+use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::{CryptoPriceValidated, ProposalSumbitted}, state::{DataSource, MarketCategory, OracleType, OracleValue, PriceCondition, ResolutionProposal}, utils::{calcualte_median, normalize_price, read_pyth_price, validate_price_agreement, validate_pyth_price}
 };
 
 #[derive(Accounts)]
@@ -13,6 +13,7 @@ pub struct ProposeCryptoOutcome<'info>{
 
     pub market : UncheckedAccount<'info>,
 
+    // CPI to market program for checking Market is Expired
     pub market_registery_program  : Program<'info,MarketRegistry>,
 
     #[account(
@@ -67,7 +68,7 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
     market_registry::cpi::assert_market_expired(cpi_ctx)?;
 
 
-    // Validate Fees Outcome 
+    // Validate Feeds  Outcome 
     require!(
         !feed_ids.is_empty() && feed_ids.len() <= MAX_DATA_SOURCES,
         ResolutionError::TooManyDataSources
@@ -121,6 +122,56 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
         })
     }
 
-    
+    // calculate median price 
+    let consensus_price = calcualte_median(&price)?;
+
+    // 
+    validate_price_agreement(&price, consensus_price)?;
+
+    let outcome = if condition.is_met(consensus_price) {
+        ResultOutcome::Yes
+    }else {
+        ResultOutcome::No
+    };
+
+    //  Transfer the bond USDC to the Bond vault 
+// Transfer usdc from proposer bond account to Bond vault account and proposer has the suthority for it
+    let transfer_account = Transfer{
+        from : ctx.accounts.proposer_bond_account.to_account_info(),
+        to : ctx.accounts.bond_vault.to_account_info(),
+        authority: ctx.accounts.proposer.to_account_info()
+    };
+
+    let cpi_ctx  = CpiContext::new(ctx.accounts.token_program.to_account_info(), transfer_account);
+
+    token::transfer(cpi_ctx, bond_amount)?;
+
+    msg!("Bond locked: {} USDC", bond_amount as f64 / 1_000_000.0);
+
+    // Update resolution proposal 
+
+    resolution.proposer = ctx.accounts.proposer.key();
+    resolution.proposed_outcome = Some(outcome);
+    resolution.proposal_timestamp = clock.unix_timestamp;
+    resolution.dispute_deadline = clock.unix_timestamp.checked_add(DISPUTE_WINDOW_SECONDS)
+                                    .ok_or(ResolutionError::ArithmeticOverflow)?;
+
+    resolution.data_source = data_source;
+
+    msg!("Dispute window: {} seconds", DISPUTE_WINDOW_SECONDS);
+    msg!("Dispute deadline: {}", resolution.dispute_deadline);
+
+    // Emit proposal event
+    emit!(ProposalSumbitted {
+        market: ctx.accounts.market.key(),
+        proposer: ctx.accounts.proposer.key(),
+        outcome,
+        category: MarketCategory::Crypto,
+        bond_amount,
+        data_source_count: price.len() as u8,
+        dispute_deadline: resolution.dispute_deadline,
+        timestamp: clock.unix_timestamp,
+    });
+
     Ok(())
 }

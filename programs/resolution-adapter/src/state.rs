@@ -155,3 +155,13 @@ pub enum PriceCondition{
 
     Between {min : i64, max : i64}
 }
+
+impl PriceCondition{
+    pub fn is_met(&self,price:i64)->bool{
+        match  self {
+            PriceCondition::GreaterOrEqual { target } => price >= *target,
+            PriceCondition::LessOrEqual { target } => price<=*target,
+            PriceCondition::Between { min, max } => price>=*min && price <= *max
+        }
+    }
+}

@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::{PriceUpdateV2, get_feed_id_from_hex};
 
-use crate::{constants::MAX_ORACLE_STALENESS_SECONDS, error::ResolutionError};
+use crate::{constants::{MAX_ORACLE_STALENESS_SECONDS, MAX_PRICE_DEVIATION_BPS}, error::ResolutionError};
 
 
 pub struct PriceData{
@@ -65,5 +65,39 @@ pub fn validate_pyth_price(price_data :&PriceData,current_time:i64)->Result<()>{
         .ok_or(ResolutionError::ArithmeticOverflow)?;
 
     require!(price_data.confidence<=max_confidence,ResolutionError::LowPriceConfidence);
+    Ok(())
+}
+
+pub fn calcualte_median(prices:&[i64])->Result<i64>{
+
+    require!(!prices.is_empty(),ResolutionError::NoDataSources);
+
+    let mut sorted = prices.to_vec();
+    sorted.sort();
+
+    let mid = sorted.len()/2;
+    // if even number  then median is (middle + middle-1 )/ 2
+    if sorted.len()%2 == 0{
+        let sum = sorted[mid-1].checked_add(sorted[mid]).ok_or(ResolutionError::ArithmeticOverflow)?;
+        Ok(sum/2)
+    }else {
+        Ok(sorted[mid])
+    }
+}
+
+
+pub fn validate_price_agreement(prices:&[i64],consensus:i64)->Result<()>{
+    for price in prices {
+        let diff = (price-consensus).abs();
+
+        let max_deviation = (consensus.abs()as u64).checked_mul(MAX_PRICE_DEVIATION_BPS as u64)
+                                                    .ok_or(ResolutionError::ArithmeticOverflow)?
+                                                    .checked_div(10000)
+                                                    .ok_or(ResolutionError::ArithmeticOverflow)?;
+        require!(
+            diff <= max_deviation as i64,
+            ResolutionError::PriceDeviationTooHigh
+        );
+    }
     Ok(())
 }
