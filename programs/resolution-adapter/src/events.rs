@@ -1,4 +1,3 @@
-use core::str;
 
 use anchor_lang::prelude::*;
 use market_registry::ResultOutcome;

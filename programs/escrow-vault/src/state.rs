@@ -50,7 +50,7 @@ impl EscrowVault {
            // Yes == No == Collateral
     pub fn verify_invariant(&self) -> Result<()> {
         require!(
-            self.total_no_minted == self.total_no_minted,
+            self.total_yes_minted == self.total_no_minted,
             EscrowVaultError::InvariantViolationCollateralMismatch
         );
         let expected_collateral = self

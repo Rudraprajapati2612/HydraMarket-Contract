@@ -1,4 +1,3 @@
-use anchor_lang::prelude::*;
 
 /// Seed for resolution proposal PDA
 pub const RESOLUTION_SEED: &[u8] = b"resolution";

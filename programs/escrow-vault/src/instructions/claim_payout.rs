@@ -68,7 +68,7 @@ pub fn handler(ctx:Context<ClaimPayouts>)->Result<()>{
     let vault_key = ctx.accounts.vault.key();
     let vault  = &mut ctx.accounts.vault;
     let clock = Clock::get()?;
-    // check first vault is settled 
+    // check first vault is settled -> If vault is settled then only Claim payout is available 
     require!(vault.is_ready_for_claims(),EscrowVaultError::NotSettled);
 
     // get users token balances 
@@ -150,7 +150,7 @@ pub fn handler(ctx:Context<ClaimPayouts>)->Result<()>{
                     mint : ctx.accounts.no_token_mint.to_account_info(),
                     from : ctx.accounts.user_no_account.to_account_info(),
                     authority : ctx.accounts.user.to_account_info()
-                } )
+                })
             , payout.no_token_to_burn)?;
             msg!("Burned {} NO tokens", payout.no_token_to_burn);
     }

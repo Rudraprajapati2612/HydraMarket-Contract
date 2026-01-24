@@ -107,7 +107,7 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
         data_source.push(DataSource{
             source_type : OracleType::Pyth,
             identifer : pair.clone(),
-            oracle_amount : Some(price_update_account.key()),
+            oracle_account : Some(price_update_account.key()),
             value : OracleValue::Price(normalized_price),
             timestamp : price_data.timestamp
         });

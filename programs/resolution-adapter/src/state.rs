@@ -95,7 +95,7 @@ pub struct  DataSource{
     // e.g For "BTC/USDC" for crypto and team_name  for Sports
     pub identifer : String,
 
-    pub oracle_amount : Option<Pubkey>,
+    pub oracle_account : Option<Pubkey>,
     pub value : OracleValue,
     pub timestamp : i64
 }
@@ -164,4 +164,24 @@ impl PriceCondition{
             PriceCondition::Between { min, max } => price>=*min && price <= *max
         }
     }
+}
+
+#[derive(AnchorDeserialize,AnchorSerialize,Clone)]
+
+pub struct SportsResolutionData{
+    pub event_id : String,
+
+    pub event_type : SportsEventType,
+
+    pub observed_result : Vec<String>,
+
+    pub consensus_result : String
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+
+pub enum SportsEventType {
+    Winner,
+    ScoreThreshold,
+    YesNo
 }

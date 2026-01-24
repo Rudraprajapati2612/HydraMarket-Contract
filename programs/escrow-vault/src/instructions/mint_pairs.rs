@@ -4,7 +4,7 @@ use market_registry::cpi::accounts::AssertMarketOpen;
 use market_registry::program::MarketRegistry;
 use crate::{constants::{COLLATERAL_PER_PAIR, USDC_DECIMALS, USDC_UNIT, VAULT_SEED}, error::EscrowVaultError, events::PairsMinted, state::EscrowVault, utils::{log_vault_state, verify_collateral_recived, verify_vault_invariant}
 };
-// locks colateral usd and mint Yes and No token 
+// locks colateral usdc and mint Yes and No token 
 #[derive(Accounts)]
 pub struct MintPairs <'info>{
     // SettelMent Worker  the person who will sign the transaction for transfering the usdc from Hot waller  to Vault 
