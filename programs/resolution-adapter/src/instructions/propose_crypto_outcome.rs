@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use market_registry::{ ResultOutcome, cpi::accounts::AssertMarketExpired, program::MarketRegistry};
 
-use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::{CryptoPriceValidated, ProposalSumbitted}, state::{DataSource, MarketCategory, OracleType, OracleValue, PriceCondition, ResolutionProposal}, utils::{calcualte_median, normalize_price, read_pyth_price, validate_price_agreement, validate_pyth_price}
+use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::{CryptoPriceValidated, ProposalSumbitted}, state::{BondContributor, DataSource, MarketCategory, OracleType, OracleValue, PriceCondition, ResolutionProposal}, utils::{calcualte_median, normalize_price, read_pyth_price, validate_price_agreement, validate_pyth_price}
 };
 
 #[derive(Accounts)]
@@ -148,11 +148,17 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
 
     msg!("Bond locked: {} USDC", bond_amount as f64 / 1_000_000.0);
 
+    // Track Bond Contribution 
+    resolution.bond_contributers.push(BondContributor{
+        participant : ctx.accounts.proposer.key(),
+        amount : bond_amount
+    });
     // Update resolution proposal 
 
     resolution.proposer = ctx.accounts.proposer.key();
     resolution.proposed_outcome = Some(outcome);
     resolution.proposal_timestamp = clock.unix_timestamp;
+    resolution.bond_amount = bond_amount;
     resolution.dispute_deadline = clock.unix_timestamp.checked_add(DISPUTE_WINDOW_SECONDS)
                                     .ok_or(ResolutionError::ArithmeticOverflow)?;
 

@@ -1,6 +1,15 @@
 use anchor_lang::prelude::*;
 use market_registry::ResultOutcome;
 
+use crate::error::ResolutionError;
+
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct BondContributor{
+    pub participant : Pubkey,
+
+    pub amount : u64
+}
 
 #[account]
 pub struct ResolutionProposal{
@@ -35,7 +44,11 @@ pub struct ResolutionProposal{
     // 3)If Result is correct then Bond will retutn 1000 usdc for the Honsety 
     pub bond_vault : Pubkey,
 
-    pub bump : u8
+    pub bump : u8,
+
+    pub bond_contributers:Vec<BondContributor>,
+
+    pub is_emergency_resolved : bool
 }
 
 
@@ -53,7 +66,24 @@ impl ResolutionProposal{
     1 +   // is_finalized
     4 + (3 * DisputeProposal::LEN) +  // disputes (vec with max 3)
     32 +  // bond_vault
+    1 +
+    4 + (10 * BondContributor::LEN) + // ✅ ADD: bond_contributors (max 10)
     1;    // bump
+
+    pub fn is_dispute_window_open(&self,current_time:i64) -> bool{
+        current_time< self.dispute_deadline && !self.is_finalized
+    }
+
+    pub fn is_dispute_window_closed(&self,current_time:i64)-> bool{
+        current_time>= self.dispute_deadline || self.is_finalized
+    }
+
+    pub fn add_dispute(&mut self , dispute:DisputeProposal)->Result<()>{
+        require!(self.disputes.len() < 3, ResolutionError::MaxDisputesReached);
+        self.disputes.push(dispute);
+        self.is_disputed = true;
+        Ok(())
+    }
 }
 
 
@@ -184,4 +214,9 @@ pub enum SportsEventType {
     Winner,
     ScoreThreshold,
     YesNo
+}
+
+
+impl BondContributor {
+    pub const LEN: usize = 32 + 8;  // pubkey + u64
 }

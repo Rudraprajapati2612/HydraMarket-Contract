@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use market_registry::{cpi::accounts::AssertMarketExpired, program::MarketRegistry};
 
-use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MAX_ORACLE_STALENESS_SECONDS, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::{ProposalSumbitted, SportsEventvalidated}, state::{DataSource, MarketCategory, OracleType, ResolutionProposal, SportsEventType}, utils::{determine_sports_outcome, find_consensus, validate_sports_consensus}};
+use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MAX_ORACLE_STALENESS_SECONDS, MIN_PROPOSAL_BOND, RESOLUTION_SEED}, error::ResolutionError, events::{ProposalSumbitted, SportsEventvalidated}, state::{BondContributor, DataSource, MarketCategory, OracleType, ResolutionProposal, SportsEventType}, utils::{determine_sports_outcome, find_consensus, validate_sports_consensus}};
 
 #[derive(Accounts)]
 
@@ -47,7 +47,7 @@ pub fn handler(
     oracle_data : Vec<SportsOracleData>,
     bond_amount : u64
 )->Result<()>{
-    let resolution_proposal_key = ctx.accounts.resolution_proposal.key();
+    let resolution_proposal_key = ctx.accounts.proposer.key();
     let resolution = &mut ctx.accounts.resolution_proposal;
     let clock = Clock::get()?;
 
@@ -55,11 +55,15 @@ pub fn handler(
     require!(bond_amount>=MIN_PROPOSAL_BOND,ResolutionError::InsufficientBond);
     // validate no existing proposal -> This is the first porposal of their 
     require!(resolution.bond_amount == 0 , ResolutionError::ProposalAlreadyExists);
+    let cpi_account = AssertMarketExpired {
+        market: ctx.accounts.market.to_account_info()
+    };
 
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info()
-                                            , AssertMarketExpired{
-                                        market : ctx.accounts.market.to_account_info()
-                });
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.market_registery_program.to_account_info(),  
+        cpi_account
+    );
+
     market_registry::cpi::assert_market_expired(cpi_ctx)?;
 
     // Check That Data is Not empty and oracle data lengeth is less than 
@@ -116,7 +120,7 @@ pub fn handler(
 
     // Transfer amount from bond to vault
     let cpi_account = Transfer{
-        from : ctx.accounts.bond_vault.to_account_info(),
+        from : ctx.accounts.proposer_bond_account.to_account_info(),
         to  : ctx.accounts.bond_vault.to_account_info(),
         authority : ctx.accounts.proposer.to_account_info()
     };
@@ -126,12 +130,20 @@ pub fn handler(
     token::transfer(cpi_ctx, bond_amount)?;
     msg!("Bond locked: {} USDC", bond_amount as f64 / 1_000_000.0);
 
+    // Added Track bond Contribution 
+
+    resolution.bond_contributers.push(BondContributor{
+        participant: ctx.accounts.proposer.key(),
+        amount : bond_amount
+    });
+
     // Update Resolution proposal 
 
     resolution.proposer = resolution_proposal_key;
     resolution.proposed_outcome = Some(outcome);
     resolution.proposal_timestamp = clock.unix_timestamp;
-    resolution.proposal_timestamp = clock.unix_timestamp;
+    resolution.bond_amount = bond_amount;  // ✅ ADD: Set bond_amount
+    resolution.data_source = data_source;
     resolution.dispute_deadline = clock.unix_timestamp.checked_add(DISPUTE_WINDOW_SECONDS).ok_or(ResolutionError::ArithmeticOverflow)?;
 
 

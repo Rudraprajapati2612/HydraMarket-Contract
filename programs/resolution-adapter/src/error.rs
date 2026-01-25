@@ -88,4 +88,11 @@ pub enum ResolutionError {
 
     #[msg("Bond vault mismatch")]
     BondVaultMismatch,
+
+    #[msg("Invalid account count")]
+    InvalidAccountCount,
+    
+    #[msg("Unauthorized admin")]
+    UnauthorizedAdmin,
+
 }

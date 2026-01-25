@@ -50,6 +50,7 @@ pub fn handler(ctx:Context<InitializeResolution>,category : MarketCategory)->Res
 
     resolution.proposed_outcome = None ;
     resolution.bond_amount = 0;
+    resolution.proposal_timestamp =0;
     resolution.dispute_deadline = 0;
     resolution.category = category;
     resolution.data_source = Vec::new();
@@ -58,6 +59,8 @@ pub fn handler(ctx:Context<InitializeResolution>,category : MarketCategory)->Res
     resolution.disputes = Vec::new();
     resolution.bond_vault = ctx.accounts.bond_vault.key();
     resolution.bump = ctx.bumps.resolution_proposal;
+    resolution.bond_contributers = Vec::new();  
+    resolution.is_emergency_resolved = false; 
 
     msg!("Resolution proposal initialized for market: {}", ctx.accounts.market.key());
     msg!("Category: {:?}", category);
