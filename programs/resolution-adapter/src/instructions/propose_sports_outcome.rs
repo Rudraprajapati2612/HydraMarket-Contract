@@ -10,7 +10,7 @@ pub struct  ProposeSportsOutcome<'info>{
     #[account(mut)]
     pub proposer : Signer<'info>,
 
-    /// CHECK : validate via CPI
+    /// CHECK: Validated via CPI to market_registry program
     pub market : UncheckedAccount<'info>,
 
     pub market_registery_program : Program<'info,MarketRegistry>,

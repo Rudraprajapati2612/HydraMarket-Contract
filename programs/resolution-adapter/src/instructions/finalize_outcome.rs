@@ -13,7 +13,7 @@ pub struct FinalizeOutcome<'info>{
     pub authority : Signer<'info>,
 
     #[account(mut)]
-    /// CHECK : validate via CPI
+    /// CHECK: Validated via CPI to market_registry program
     pub market : UncheckedAccount<'info>,
 
     

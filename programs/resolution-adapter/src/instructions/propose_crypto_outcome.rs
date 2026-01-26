@@ -11,7 +11,8 @@ use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MIN_PROPOSAL_B
 pub struct ProposeCryptoOutcome<'info>{
     #[account(mut)]
     pub proposer : Signer<'info>,
-
+    
+     /// CHECK: Validated via CPI to market_registry program
     pub market : UncheckedAccount<'info>,
 
     // CPI to market program for checking Market is Expired
