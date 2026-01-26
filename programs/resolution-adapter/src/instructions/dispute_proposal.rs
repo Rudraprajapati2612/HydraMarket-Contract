@@ -87,7 +87,7 @@ pub fn handler(
     
     msg!("Dispute bond locked successfully");
 
-    resolution.bond_contributers.push(BondContributor{
+    resolution.bond_contributors.push(BondContributor{
         participant : ctx.accounts.disputer.key(),
         amount : bond_amount
     });

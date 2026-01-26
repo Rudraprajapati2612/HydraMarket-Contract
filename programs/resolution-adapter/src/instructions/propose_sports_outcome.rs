@@ -132,7 +132,7 @@ pub fn handler(
 
     // Added Track bond Contribution 
 
-    resolution.bond_contributers.push(BondContributor{
+    resolution.bond_contributors.push(BondContributor{
         participant: ctx.accounts.proposer.key(),
         amount : bond_amount
     });

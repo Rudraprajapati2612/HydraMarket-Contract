@@ -7,6 +7,7 @@ use crate::{constants::{DISPUTE_WINDOW_SECONDS, MAX_DATA_SOURCES, MIN_PROPOSAL_B
 };
 
 #[derive(Accounts)]
+
 pub struct ProposeCryptoOutcome<'info>{
     #[account(mut)]
     pub proposer : Signer<'info>,
@@ -149,7 +150,7 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
     msg!("Bond locked: {} USDC", bond_amount as f64 / 1_000_000.0);
 
     // Track Bond Contribution 
-    resolution.bond_contributers.push(BondContributor{
+    resolution.bond_contributors.push(BondContributor{
         participant : ctx.accounts.proposer.key(),
         amount : bond_amount
     });

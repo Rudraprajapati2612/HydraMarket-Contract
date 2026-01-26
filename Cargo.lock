@@ -1358,7 +1358,6 @@ dependencies = [
  "anchor-spl",
  "market-registry",
  "pyth-solana-receiver-sdk",
- "solana-program",
 ]
 
 [[package]]

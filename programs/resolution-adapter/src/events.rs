@@ -108,7 +108,7 @@ pub struct EmergencyResolution{
      
     pub reason : String,
 
-    pub redunded_amount : u64,
+    pub refunded_amount : u64,
 
     pub timestamp : i64 
 }

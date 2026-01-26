@@ -46,7 +46,7 @@ pub struct ResolutionProposal{
 
     pub bump : u8,
 
-    pub bond_contributers:Vec<BondContributor>,
+    pub bond_contributors:Vec<BondContributor>,
 
     pub is_emergency_resolved : bool
 }

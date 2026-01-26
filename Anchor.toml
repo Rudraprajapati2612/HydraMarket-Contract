@@ -2,7 +2,7 @@
 members = [
   "programs/market-registry",
   "programs/escrow-vault",
-  "programs/resolution_adapter"
+  "programs/resolution-adapter"
 ]
 
 [provider]
@@ -11,6 +11,7 @@ wallet = "~/.config/solana/id.json"
 [programs.localnet]
 market_registry = "2bRruB58Pk39PRz2wpAhSjURJMKpWoZdpiozzRLruqyU"
 escrow_vault = "7naTChgbgNS8cUoMbfKoYA8qomHJVUf5oeVjv9iSmiyf"
+resolution_adapter = "8BPYHejifTVauQkWqKhMzA3uJxDr3U8mKH9NSfbtaAa5"
 
 [registry]
 url = "https://api.apr.dev"
