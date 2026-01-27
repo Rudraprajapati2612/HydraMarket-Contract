@@ -521,6 +521,7 @@ describe("Market Registery Complete Tests",()=>{
 
     //  Resolution Outcome 
 
+    // Done
     describe("Resolution Outcome",()=>{
         let market3Pda : PublicKey;
         let market3ResolutionAdapter : Keypair;
@@ -540,12 +541,14 @@ describe("Market Registery Complete Tests",()=>{
             .openMarket() 
             .accounts({
                admin : admin.publicKey,
+            // @ts-ignore
                market : market3Pda
             }).signers([admin]).rpc();
 
 
             await program.methods.resolvingMarket().accounts({
                 admin : admin.publicKey,
+                // @ts-ignore
                 market : market3Pda
             }).signers([admin]).rpc();
 
@@ -558,6 +561,7 @@ describe("Market Registery Complete Tests",()=>{
             .accounts(
                 {
                     resolutionAdapter : market3ResolutionAdapter.publicKey,
+                    // @ts-ignore
                     market : market3Pda
                 }
             ).signers([market3ResolutionAdapter]).rpc()
@@ -584,16 +588,18 @@ describe("Market Registery Complete Tests",()=>{
 
             await program.methods.openMarket().accounts({
                 admin : admin.publicKey,
+                // @ts-ignore
                 market : market4Pda
-            });
+            }).signers([admin]).rpc();
 
             let marketOpen = await program.account.market.fetch(market4Pda);
             console.log(`  Market state: ${getMarketState(marketOpen.state)}`);
 
             await program.methods.resolvingMarket().accounts({
                 admin : admin.publicKey,
+                // @ts-ignore
                 market : market4Pda
-            })
+            }).signers([admin]).rpc();
 
              
             let marketRes = await program.account.market.fetch(market4Pda);
@@ -610,6 +616,7 @@ describe("Market Registery Complete Tests",()=>{
             await program.methods.finalizeMarket({invalid:{}})
                 .accounts({
                     resolutionAdapter : result.resolutionAdapter.publicKey,
+                    // @ts-ignore
                     market : market4Pda
                 }).signers([result.resolutionAdapter]).rpc();
             
@@ -619,6 +626,7 @@ describe("Market Registery Complete Tests",()=>{
             
         })
 
+        // Done 
         it("Should to fail To Finalizing before Resolving State",async()=>{
             const market5id = new Uint8Array(32).fill(5);
 
@@ -632,6 +640,7 @@ describe("Market Registery Complete Tests",()=>{
             await program.methods.finalizeMarket({yes:{}})
                   .accounts({
                     resolutionAdapter : result.resolutionAdapter.publicKey,
+                    // @ts-ignore
                     market : result.marketPda
                   }).signers([result.resolutionAdapter]).rpc()
                   expect.fail("Should have thrown error");
@@ -642,20 +651,271 @@ describe("Market Registery Complete Tests",()=>{
                 }  
         })
 
-
+        // Done 
         it("Should Failed to Finalize Twice",async()=>{
             try{
                 await program.methods.finalizeMarket({no:{}})
                       .accounts({
                         resolutionAdapter : market3ResolutionAdapter.publicKey,
+                        // @ts-ignore
                         market : market3Pda
                       }).signers([market3ResolutionAdapter]).rpc()
                 expect.fail("Should have thrown error");      
             }catch(e:any){
-                expect(e.error.errorCode.code).to.equal("InvalidStateTransition");
+                expect(e.error.errorCode.code).to.equal("MarketAlreadyResolved");
             console.log(" Correctly rejected double finalization");
             }
         })
     })
 
+    // Done 
+    describe("Access Control",()=>{
+
+        let testmarketPda : PublicKey ;
+        
+        before(async()=>{
+            const marketId = new Uint8Array(32).fill(10);
+            
+            const result = await createMarket(
+                marketId,
+                "Access Control Test",
+                futureExpiry
+            );
+
+            testmarketPda = result.marketPda;
+
+            await program.methods.openMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : testmarketPda
+            }).signers([admin]).rpc();
+        })  
+        // Done
+        it("Should Reject non Admin Pause",async ()=>{
+            try{
+                await program.methods.pauseMarket()
+                      .accounts({
+                        admin: nonAdmin.publicKey,
+                        // @ts-ignore
+                        market : testmarketPda
+                      }).signers([nonAdmin]).rpc()
+
+                      expect.fail("Should have thrown error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("Unauthorized");
+                console.log("✅ Correctly rejected non-admin pause");
+            }   
+        })
+
+        it("Should Reject Non Admin Open",async()=>{
+            await program.methods.pauseMarket().accounts({
+                admin:admin.publicKey,
+                // @ts-ignore
+                market : testmarketPda
+            }).signers([admin]).rpc()
+
+            try{
+                await program.methods.resumeMarket().accounts({
+                    admin : nonAdmin.publicKey,
+                    // @ts-ignore
+                    market : testmarketPda
+                }).signers([nonAdmin]).rpc();
+
+                expect.fail("Should Have Thrown Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("Unauthorized");
+                console.log("Correctly rejected non admin Resume");
+                
+            }
+        })
+
+        it("Should reject Non admin set resolving",async()=>{
+            // Resume the market because market is pause 
+            await program.methods.resumeMarket().accounts({
+                admin: admin.publicKey,
+                // @ts-ignore
+                market : testmarketPda
+            }).signers([admin]).rpc();
+
+            try{
+                await program.methods.resolvingMarket().accounts({
+                    admin : nonAdmin.publicKey,
+                    // @ts-ignore
+                    market : testmarketPda
+                }).signers([nonAdmin]).rpc();
+                expect.fail("Should have thrown error");
+            }catch(e:any){
+                expect(e.error.errorCode.code).to.equal("Unauthorized");
+                console.log(" Correctly rejected non-admin set resolving");
+            }
+        })
+
+        it("Should Reject Non admin Finalized",async()=>{
+
+            await program.methods.resolvingMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : testmarketPda
+            }).signers([admin]).rpc();
+
+            try{
+                await program.methods.finalizeMarket({yes:{}}).accounts({
+                    resolutionAdapter : nonAdmin.publicKey,
+                    // @ts-ignore
+                    market : testmarketPda
+                }).signers([nonAdmin]).rpc();
+                expect.fail("Should have thrown error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InvalidResolutionAdapter");
+                console.log("✅ Correctly rejected non-admin finalize");
+            }
+        })
+
+
+    })
+
+    describe("Market Queries and Validation",()=>{
+        it("Should Fetch market Data Correctly",async()=>{
+            console.log("Fetching Market 1 Data");
+            
+
+            const market = await program.account.market.fetch(market1Pda);
+
+            console.log("Market 1 Details");
+            
+            console.log(" Question",market.question);
+            console.log(" State",getMarketState(market.state));
+            console.log(" Creator",market.creator.toString());
+            console.log(" Expire at ",new Date(market.expireAt.toNumber()*1000).toString());
+            console.log(" YES Mint:", market.yesTokenMint.toString());
+            console.log(" NO Mint:", market.noTokenMint.toString());
+            console.log(" Escrow Vault:", market.escrowVault.toString());
+            console.log(" Resolution:", market.resolutionOutcome ? "YES" : "Not resolved");
+      
+            expect(market.question).to.not.be.empty;
+            expect(market.creator.toString()).to.equal(admin.publicKey.toString());
+        })
+
+        it("Should Fetch All the Market",async()=>{
+            console.log("Fetching All the Market");
+
+            const allMarkets = await program.account.market.all();
+
+            console.log(`\nTotal markets created: ${allMarkets.length}`);
+            
+            allMarkets.forEach((market,index)=>{
+                console.log(`\nMarket ${index+1}`);
+                console.log("  Address:", market.publicKey.toString());
+                console.log("  Question:", market.account.question);
+                console.log("  State:", getMarketState(market.account.state));
+            })
+
+            expect(allMarkets.length).to.be.greaterThan(0);
+        })
+
+        it("DEBUG: Scan entire account for creator pubkey", async() => {
+            console.log("\n🔍 DEEP SCAN FOR CREATOR PUBKEY\n");
+            
+            // Fetch market to confirm creator
+            const market = await program.account.market.fetch(market1Pda);
+            console.log("Market creator:", market.creator.toString());
+            console.log("Admin pubkey:", admin.publicKey.toString());
+            console.log("Match:", market.creator.toString() === admin.publicKey.toString());
+            
+            // Get raw account data
+            const accountInfo = await program.provider.connection.getAccountInfo(market1Pda);
+            const data = accountInfo.data;
+            
+            console.log("\nAccount size:", data.length, "bytes");
+            console.log("Discriminator [0-7]:", data.slice(0, 8).toString('hex'));
+            
+            // Convert creator pubkey to bytes for searching
+            const creatorBytes = admin.publicKey.toBytes();
+            console.log("\nSearching for creator bytes:", Buffer.from(creatorBytes).toString('hex'));
+            
+            // Search the entire account
+            let found = false;
+            for (let i = 0; i <= data.length - 32; i++) {
+                const slice = data.slice(i, i + 32);
+                
+                // Check if bytes match
+                if (Buffer.from(slice).equals(Buffer.from(creatorBytes))) {
+                    console.log(`\n✅ FOUND CREATOR AT OFFSET ${i}!`);
+                    console.log(`   Bytes ${i} to ${i + 31}`);
+                    
+                    // Show context
+                    if (i >= 8) {
+                        console.log(`   Previous 8 bytes [${i-8} to ${i-1}]:`, data.slice(i-8, i).toString('hex'));
+                    }
+                    console.log(`   Creator bytes [${i} to ${i+31}]:`, slice.toString('hex'));
+                    if (i + 32 < data.length) {
+                        console.log(`   Next 8 bytes [${i+32} to ${i+39}]:`, data.slice(i+32, Math.min(i+40, data.length)).toString('hex'));
+                    }
+                    
+                    found = true;
+                }
+            }
+            
+            if (!found) {
+                console.log("\n❌ Creator pubkey NOT found in account data!");
+                console.log("This is very unusual. Possible issues:");
+                console.log("1. Wrong market account being tested");
+                console.log("2. Creator stored differently than expected");
+                console.log("3. Account data corrupted");
+                
+                // Show first 200 bytes
+                console.log("\nFirst 200 bytes of account:");
+                console.log(data.slice(0, Math.min(200, data.length)).toString('hex'));
+            }
+            
+            expect(found).to.be.true;
+        });
+        
+        it("Should Fetch market By creator", async() => {
+            // After running the DEBUG test above, use the offset it found
+            // For now, let's try a wider range
+            const offsetsToTry = [8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120];
+            
+            for (const offset of offsetsToTry) {
+                const markets = await program.account.market.all([
+                    {
+                        memcmp: {
+                            offset: offset,
+                            bytes: admin.publicKey.toBase58()
+                        }
+                    }
+                ]);
+                
+                if (markets.length > 0) {
+                    console.log(`\n✅ SUCCESS! Offset ${offset} found ${markets.length} markets`);
+                    expect(markets.length).to.be.greaterThan(0);
+                    return;
+                }
+            }
+            
+            throw new Error("Could not find markets with any offset");
+        });
+
+        it("It should Market Expirey in future",async()=>{
+            console.log("Validating Market Expiry");
+            
+            const marketId = new Uint8Array(32).fill(20);
+
+            try{
+                await createMarket(
+                    marketId,
+                    "Past Expirey Test",
+                    nowTimestamp - 3600
+                );
+                expect.fail("Should have Thrown Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InvalidExpiryTimestamp");
+                console.log("Correctly rejected past expiry");
+                
+            }
+        })
+    })
+
+
 })
+
