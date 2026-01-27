@@ -21,8 +21,13 @@ pub const MAX_CATEGORY_LENGTH: usize = 50;
 pub const MAX_RESOLUTION_SOURCE_LENGTH: usize = 100;
 
 /// Minimum time until market expiry (1 hour in seconds)
-pub const MIN_EXPIRY_DURATION: i64 = 3600;
+// In programs/market-registry/src/constants.rs
 
+#[cfg(not(feature = "testing"))]
+pub const MIN_EXPIRY_DURATION: i64 = 3600; // 1 hour for production
+
+#[cfg(feature = "testing")]
+pub const MIN_EXPIRY_DURATION: i64 = 10; // 10 seconds for tests
 /// Maximum time until market expiry (1 year in seconds)
 pub const MAX_EXPIRY_DURATION: i64 = 31_536_000;
 

@@ -24,7 +24,7 @@ describe("Market Registery Complete Tests",()=>{
     let market1YesMint : Keypair; //we need to create their mint account in test 
     let market1NoMint : Keypair;
     let market1EscrowVault : PublicKey; //hodl usdc for market1 
-    let market1ResolutionAdapter : PublicKey; // oracle feed 
+    let market1ResolutionAdapter : Keypair; // oracle feed 
 
 
     // market - 2  account 
@@ -84,7 +84,7 @@ describe("Market Registery Complete Tests",()=>{
         mockEscrowProgram
        );
 
-       const resolutionAdapter  = Keypair.generate().publicKey;
+       const resolutionAdapter  = Keypair.generate();
 
        const params = {
         marketId : Array.from(marketId),
@@ -105,7 +105,7 @@ describe("Market Registery Complete Tests",()=>{
         noTokenMint: noMint.publicKey,
         escrowVault: escrowVaultPda,
         escrowProgram: mockEscrowProgram,
-        resolutionAdapter,
+        resolutionAdapter:resolutionAdapter.publicKey,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
@@ -133,7 +133,7 @@ describe("Market Registery Complete Tests",()=>{
         admin = Keypair.generate();
         nonAdmin = Keypair.generate();
         user = Keypair.generate();
-        
+        market1ResolutionAdapter = Keypair.generate();
         // airdrop solana to all the users 
 
         await Promise.all([
@@ -177,7 +177,7 @@ describe("Market Registery Complete Tests",()=>{
                 mockEscrowProgram
             );
 
-            market1ResolutionAdapter = Keypair.generate().publicKey;
+            
 
             const question  = "Will BTC reach $100k by the end of janurary 2026";
             const description = "Market will resolve yes if Bitcoin will resovle yes"
@@ -202,7 +202,7 @@ describe("Market Registery Complete Tests",()=>{
                 noTokenMint : market1NoMint.publicKey,
                 escrowVault : market1EscrowVault,
                 escrowProgram : mockEscrowProgram,
-                resolutionAdapter : market1ResolutionAdapter,
+                resolutionAdapter : market1ResolutionAdapter.publicKey,
                 systemProgram : SystemProgram.programId,
                 tokenProgram : TOKEN_PROGRAM_ID,
                 rent : anchor.web3.SYSVAR_RENT_PUBKEY
@@ -221,7 +221,7 @@ describe("Market Registery Complete Tests",()=>{
             expect(market.yesTokenMint.toString()).to.equal(market1YesMint.publicKey.toString());
             expect(market.noTokenMint.toString()).to.equal(market1NoMint.publicKey.toString());
             expect(market.escrowVault.toString()).to.equal(market1EscrowVault.toString());
-            expect(market.resolutionAdapter.toString()).to.equal(market1ResolutionAdapter.toString());
+            expect(market.resolutionAdapter.toString()).to.equal(market1ResolutionAdapter.publicKey.toString());
             expect(market.resolutionSource).to.equal(resolutionSource);
             expect(getMarketState(market.state)).to.equal("CREATED");
             expect(market.resolutionOutcome).to.be.null;
@@ -242,7 +242,7 @@ describe("Market Registery Complete Tests",()=>{
             market2YesMint = result.yesMint;
             market2NoMint = result.noMint;
             market2EscrowVault = result.escrowVaultPda;
-            market2ResolutionAdapter = result.resolutionAdapter;
+            market2ResolutionAdapter = result.resolutionAdapter.publicKey;
 
             const market  = await program.account.market.fetch(market2Pda);
 
@@ -446,52 +446,215 @@ describe("Market Registery Complete Tests",()=>{
             console.log("   State:", getMarketState(market.state));
         })
 
-        // uncomment it after completing the marketmarket outcome contract 
-
-        // it("Should Resolved The market state (Resolving->Resolved)",async()=>{
+        it("Should finalize market after expiry", async () => {
+            console.log("Testing market finalization...");
             
-        //     await program.methods.finalizeMarket({yes:{}}).accounts({
-        //         resolutionAdapter : admin.publicKey,
-        //         market : market1Pda
-        //     }).signers([admin]).rpc()
-
-        //     const market = await program.account.market.fetch(market1Pda);
-
-        //     expect(getMarketState(market.state)).to.equal("RESOLVED");
-        //     expect(market.resolutionOutcome).to.deep.equal({yes:{}})
-        //     expect(market.resolvedAt).to.not.be.null ;
-        //     console.log("   State:", getMarketState(market.state));
-        // })
-
-        // it("Should fail to transition after RESOLVED", async () => {
-        //     console.log("\n❌ Testing transition after RESOLVED...");
-      
-        //     try {
-        //       await program.methods
-        //         .pauseMarket()
-        //         .accounts({
-        //           admin: admin.publicKey,
-        //           market: market1Pda,
-        //         })
-        //         .signers([admin])
-        //         .rpc();
-      
-        //       expect.fail("Should have thrown error");
-        //     } catch (err: any) {
-        //       expect(err.error.errorCode.code).to.equal("InvalidStateTransition");
-        //       console.log("✅ Correctly rejected transition after RESOLVED");
-        //     }
-        // });
-
+            // Step 1: Create market expiring in 5 seconds
+            const marketId = new Uint8Array(32).fill(100);
+            const shortExpiry = Math.floor(Date.now() / 1000) + 15;
+            
+            const result = await createMarket(
+                marketId,
+                "Will this test pass?",
+                shortExpiry
+            );
+            
+            console.log(`  Market expires at: ${new Date(shortExpiry * 1000).toISOString()}`);
+            
+            // Step 2: Open market
+            await program.methods.openMarket()
+                .accounts({
+                    admin: admin.publicKey,
+                    // @ts-ignore
+                    market: result.marketPda
+                })
+                .signers([admin])
+                .rpc();
+            
+            let market = await program.account.market.fetch(result.marketPda);
+            console.log(`  Market state: ${getMarketState(market.state)}`);
+            
+            // Step 3: Set to resolving
+            await program.methods.resolvingMarket()
+                .accounts({
+                    admin: admin.publicKey,
+                    // @ts-ignore
+                    market: result.marketPda
+                })
+                .signers([admin])
+                .rpc();
+            
+            market = await program.account.market.fetch(result.marketPda);
+            console.log(`  Market state: ${getMarketState(market.state)}`);
+            
+            // Step 4: Wait for expiry
+            console.log("  ⏳ Waiting for market to expire (16 seconds)...");
+            await new Promise(resolve => setTimeout(resolve, 16000));
+            
+            const nowTime = Math.floor(Date.now() / 1000);
+            console.log(`  Current time: ${new Date(nowTime * 1000).toISOString()}`);
+            console.log(`  Market expired: ${nowTime > shortExpiry ? "YES ✅" : "NO ❌"}`);
+            
+            // Step 5: Finalize
+            await program.methods.finalizeMarket({ yes: {} })
+                .accounts({
+                    resolutionAdapter: result.resolutionAdapter.publicKey,
+                    // @ts-ignore
+                    market: result.marketPda
+                })
+                .signers([result.resolutionAdapter])
+                .rpc();
+            
+            // Step 6: Verify
+            market = await program.account.market.fetch(result.marketPda);
+            expect(getMarketState(market.state)).to.equal("RESOLVED");
+            expect(market.resolutionOutcome).to.deep.equal({ yes: {} });
+            expect(market.resolvedAt).to.not.be.null;
+            
+            console.log("✅ Market finalized successfully");
+            console.log(`   Outcome: YES`);
+            console.log(`   Resolved at: ${new Date(market.resolvedAt.toNumber() * 1000).toISOString()}`);
+            
+        });
+        
     })
 
     //  Resolution Outcome 
 
     describe("Resolution Outcome",()=>{
         let market3Pda : PublicKey;
-
+        let market3ResolutionAdapter : Keypair;
         before(async()=>{
+            const market3Id = new Uint8Array(32).fill(3);
 
+            const shortExpiry = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(
+                market3Id,
+                "Test Market for No Outcome",
+                shortExpiry
+            );
+            
+            market3Pda = result.marketPda;
+            market3ResolutionAdapter = result.resolutionAdapter;
+            await program.methods
+            .openMarket() 
+            .accounts({
+               admin : admin.publicKey,
+               market : market3Pda
+            }).signers([admin]).rpc();
+
+
+            await program.methods.resolvingMarket().accounts({
+                admin : admin.publicKey,
+                market : market3Pda
+            }).signers([admin]).rpc();
+
+            console.log("   ⏳ Waiting for market to expire (16 seconds)...");
+            await new Promise(resolve => setTimeout(resolve, 16000));
+        })
+
+        it("It Should Finalized With No Outcome",async()=>{
+            await program.methods.finalizeMarket({no:{}})
+            .accounts(
+                {
+                    resolutionAdapter : market3ResolutionAdapter.publicKey,
+                    market : market3Pda
+                }
+            ).signers([market3ResolutionAdapter]).rpc()
+
+            const market = await program.account.market.fetch(market3Pda);
+            expect(getMarketState(market.state)).to.equal("RESOLVED");
+            expect(market.resolutionOutcome).to.deep.equal({ no: {} });
+      
+            console.log(" Finalized with NO");
+            console.log("   Outcome: NO");
+        })
+
+
+        it("It Should Finalized With Invalid Outcome",async()=>{
+            const market4Id = new Uint8Array(32).fill(4);
+            const shortExpiry = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(
+                market4Id,
+                "Testing Market With No Outcome",
+                shortExpiry
+            );
+
+            const market4Pda = result.marketPda;
+
+            await program.methods.openMarket().accounts({
+                admin : admin.publicKey,
+                market : market4Pda
+            });
+
+            let marketOpen = await program.account.market.fetch(market4Pda);
+            console.log(`  Market state: ${getMarketState(marketOpen.state)}`);
+
+            await program.methods.resolvingMarket().accounts({
+                admin : admin.publicKey,
+                market : market4Pda
+            })
+
+             
+            let marketRes = await program.account.market.fetch(market4Pda);
+            console.log(`  Market state: ${getMarketState(marketRes.state)}`);
+            
+            // Step 4: Wait for expiry
+            console.log("  ⏳ Waiting for market to expire (16 seconds)...");
+            await new Promise(resolve => setTimeout(resolve, 16000));
+            
+            const nowTime = Math.floor(Date.now() / 1000);
+            console.log(`  Current time: ${new Date(nowTime * 1000).toISOString()}`);
+            console.log(`  Market expired: ${nowTime > shortExpiry ? "YES ✅" : "NO ❌"}`);
+            
+            await program.methods.finalizeMarket({invalid:{}})
+                .accounts({
+                    resolutionAdapter : result.resolutionAdapter.publicKey,
+                    market : market4Pda
+                }).signers([result.resolutionAdapter]).rpc();
+            
+            const marketFin = await program.account.market.fetch(market4Pda);
+            expect(getMarketState(marketFin.state)).to.equal("RESOLVED");
+            expect(marketFin.resolutionOutcome).to.deep.equal({ invalid: {} });
+            
+        })
+
+        it("Should to fail To Finalizing before Resolving State",async()=>{
+            const market5id = new Uint8Array(32).fill(5);
+
+            const result = await createMarket(
+                market5id,
+                "Test Market 5 Pda",
+                futureExpiry
+            )
+
+            try{
+            await program.methods.finalizeMarket({yes:{}})
+                  .accounts({
+                    resolutionAdapter : result.resolutionAdapter.publicKey,
+                    market : result.marketPda
+                  }).signers([result.resolutionAdapter]).rpc()
+                  expect.fail("Should have thrown error");
+                }
+                catch(e:any){
+                    expect(e.error.errorCode.code).to.equal("InvalidMarketState");
+                    console.log("✅ Correctly rejected early finalization");
+                }  
+        })
+
+
+        it("Should Failed to Finalize Twice",async()=>{
+            try{
+                await program.methods.finalizeMarket({no:{}})
+                      .accounts({
+                        resolutionAdapter : market3ResolutionAdapter.publicKey,
+                        market : market3Pda
+                      }).signers([market3ResolutionAdapter]).rpc()
+                expect.fail("Should have thrown error");      
+            }catch(e:any){
+                expect(e.error.errorCode.code).to.equal("InvalidStateTransition");
+            console.log(" Correctly rejected double finalization");
+            }
         })
     })
 
