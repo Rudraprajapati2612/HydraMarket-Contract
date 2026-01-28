@@ -29,8 +29,11 @@ pub fn verify_collateral_recived(
     expected_increase:u64
 )->Result<()>{
     let actual_increase = vault_balance_after.checked_sub(vault_balance_before).ok_or(EscrowVaultError::ArithmeticUnderflow)?;
-    require!(actual_increase>expected_increase,EscrowVaultError::CollateralNotReceived);
-    
+    require!(actual_increase == expected_increase,EscrowVaultError::CollateralNotReceived);
+    require!(
+        vault_balance_after >= vault_balance_before,
+        EscrowVaultError::InvalidVaultState
+    );
 
     msg!("Collateral verified:");
     msg!("  Before: {}", vault_balance_before);

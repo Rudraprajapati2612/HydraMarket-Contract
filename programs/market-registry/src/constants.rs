@@ -10,7 +10,6 @@ pub const ADMIN_SEED: &[u8] = b"admin";
 
 /// Maximum length for market question
 pub const MAX_QUESTION_LENGTH: usize = 200;
-
 /// Maximum length for market description
 pub const MAX_DESCRIPTION_LENGTH: usize = 1000;
 

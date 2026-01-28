@@ -94,7 +94,6 @@ impl InitializeMarketParams{
         
         // validate question length 
         require!(self.question.len()<=MAX_QUESTION_LENGTH,MarketRegistryError::QuestionTooLong);
-
         // Validate Description length 
         require!(self.description.len()<=MAX_DESCRIPTION_LENGTH,MarketRegistryError::DescriptionTooLong);
 

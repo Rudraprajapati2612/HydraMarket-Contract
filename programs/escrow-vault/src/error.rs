@@ -28,6 +28,10 @@ pub enum EscrowVaultError {
     #[msg("Invalid number of pairs (must be > 0)")]
     InvalidPairCount,
 
+    #[msg("balance After Transfer is less than before")]
+    InvalidVaultState,
+
+    
     #[msg("Arithmetic overflow occurred")]
     ArithmeticOverflow,
 
