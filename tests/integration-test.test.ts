@@ -6,6 +6,7 @@ import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web
 import { program } from "@coral-xyz/anchor/dist/cjs/native/system";
 import { TOKEN_PROGRAM_ID, createAccount, createMint, getAccount, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
+import { set } from "@coral-xyz/anchor/dist/cjs/utils/features";
 
 describe("Hydra Market Full Integration Test",()=>{
     const provider = anchor.AnchorProvider.env();
@@ -51,7 +52,7 @@ describe("Hydra Market Full Integration Test",()=>{
     const category = "Crypto";
     const resolutionSource = "Pyth Network BTC/USDC";
     const nowTimestamp = Math.floor(Date.now() / 1000);
-    const expireAt = new anchor.BN(nowTimestamp + 30 * 24 * 60 * 60);
+    const expireAt = new anchor.BN(nowTimestamp + 15);
 
     async function airdrop(pubkey:PublicKey,amount: number=10){
         const sig = await provider.connection.requestAirdrop(
@@ -369,7 +370,7 @@ describe("Hydra Market Full Integration Test",()=>{
               
               
         })
-
+        // Alice yes and Bob No 
         it("Should mint complementary pairs (Alice buys YES bob buys NO)",async()=>{
             const pairs = new anchor.BN(100);
 
@@ -423,5 +424,340 @@ describe("Hydra Market Full Integration Test",()=>{
             console.log(`  NO minted: ${vault.totalNoMinted.toNumber()}`);
             console.log(`  Collateral: ${vault.totalLockedCollateral.toNumber() / 1_000_000} USDC`);
         })
+
+        it("Should mint another another batch (Charli buy YES and bob buys No)",async()=>{
+            const pairs = new anchor.BN(50);
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            await escrowProgram.methods.mintPairs(pairs).accounts({
+                authority : settlementWorker.publicKey,
+                // @ts-ignore
+                vault : escrowVaultPda,
+                market : marketPda,
+                marketRegisteryProgram : marketProgram.programId,
+                usdcVault : usdcVaultPda,
+                usdcMint,
+                hotWalletUsdc,
+                yesTokenMint : yesTokenMint.publicKey,
+                noTokenMint : noTokenMint.publicKey,
+                yesRecipient : charlieYes,
+                noRecipient : bobNo,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([settlementWorker]).rpc();
+
+            // validate
+
+            const charliYesBalance = await getTokenbalance(charlieYes);
+            const bobNoBalance = await getTokenbalance(bobNo);
+            const vault = await escrowProgram.account.escrowVault.fetch(escrowVaultPda);
+
+            expect(charliYesBalance).to.equal(50);
+            expect(bobNoBalance).to.equal(150); // 100 + 50
+            expect(vault.totalYesMinted.toNumber()).to.equal(150);
+            expect(vault.totalNoMinted.toNumber()).to.equal(150);
+            expect(vault.totalLockedCollateral.toNumber()).to.equal(150 * 1_000_000);
+            console.log(" Additional pairs minted");
+            await logBalances("Charlie", charlieUsdc, charlieYes, charlieNo);
+            await logBalances("Bob", bobUsdc, bobYes, bobNo);
+        })
+
+        it("it Should Failed with invalid pair count",async()=>{
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            try{
+                await escrowProgram.methods.mintPairs(new anchor.BN(0)).accounts({
+                    authority : settlementWorker.publicKey,
+                    // @ts-ignore
+                    vault : escrowVaultPda,
+                    market:marketPda,
+                    marketRegisteryProgram : marketProgram.programId,
+                    usdcVault : usdcVaultPda,
+                    usdcMint,
+                    hotWalletUsdc,
+                    yesTokenMint : yesTokenMint.publicKey,
+                    noTokenMint : noTokenMint.publicKey,
+                    yesRecipient : aliceYes,
+                    noRecipient : bobNo,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                }).signers([settlementWorker]).rpc();
+                expect.fail("Should have thrown error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InvalidPairCount");
+                console.log(" Correctly rejected 0 pairs");
+            }
+        })
+
+
+    })
+
+    describe("Market Resolution",()=>{
+        it("Should change Market State To Resolving State",async()=>{
+            console.log("Changing market to resolving");
+
+            await marketProgram.methods.resolvingMarket().accounts({
+                admin: admin.publicKey,
+                // @ts-ignore
+                market : marketPda
+            }).signers([admin]).rpc();
+            
+            const market = await marketProgram.account.market.fetch(marketPda);
+
+            expect(getMarketState(market.state)).to.equal("RESOLVING");
+
+            console.log("Market Set to Resolving");
+            console.log(" State ",getMarketState(market.state));
+        })
+
+        it("Should Finalize market with Yes Outcome",async()=>{
+            
+            console.log("  ⏳ Waiting for market to expire (16 seconds)...");
+             await new Promise(resolve => setTimeout(resolve, 16000));
+            await marketProgram.methods.finalizeMarket({yes:{}}).accounts({
+                resolutionAdapter:resolutionAdapter.publicKey,
+                // @ts-ignore
+                market : marketPda
+            }).signers([resolutionAdapter]).rpc();
+
+            const market = await marketProgram.account.market.fetch(marketPda);
+            expect(getMarketState(market.state)).to.equal("RESOLVED");
+            expect(market.resolutionOutcome).to.deep.equal({ yes: {} });
+            expect(market.resolvedAt).to.not.be.null;
+
+            console.log(" Market finalized with YES outcome");
+            console.log("   State:", getMarketState(market.state));
+            console.log("   Outcome: YES");
+            console.log("   Resolved at:", new Date(market.resolvedAt!.toNumber() * 1000).toISOString());
+        })
+    })
+
+    describe("SettelMent and Payouts",()=>{
+
+        it("Should Settle the vault",async()=>{
+            console.log("Settleing Worker");
+            
+            await escrowProgram.methods.settle().accounts({
+                authority : admin.publicKey,
+                // @ts-ignore
+                vault : escrowVaultPda,
+                market : marketPda
+            }).signers([admin]).rpc();
+
+            const vault = await escrowProgram.account.escrowVault.fetch(escrowVaultPda);
+
+            expect(vault.isSettled).to.be.true;
+            console.log(" Vault settled successfully");
+        })
+
+        it("Should allow Alice to claim Payout(YES winner)",async()=>{
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            // Get balance Before 
+
+            const aliceUsdcBefore = await getTokenbalance(aliceUsdc);
+            const aliceYesBefore = await getTokenbalance(aliceYes);
+            // Fetch before vault status  
+            const vaultBefore = await getAccount(provider.connection,usdcVaultPda);
+            const vaultBalanceBefore = Number(vaultBefore.amount); 
+
+            await escrowProgram.methods.claimPayout().accounts({
+                user : alice.publicKey,
+                // @ts-ignore
+                vault : escrowVaultPda,
+                market : marketPda,
+                usdcVault : usdcVaultPda,
+                userUsdc : aliceUsdc,
+                yesTokenMint : yesTokenMint.publicKey,
+                noTokenMint :  noTokenMint.publicKey,
+                userYesAccount : aliceYes,
+                userNoAccount : aliceNo,
+                tokenProgram : TOKEN_PROGRAM_ID 
+            }).signers([alice]).rpc();
+
+            const aliceUsdcAfter = await getTokenbalance(aliceUsdc);
+            const aliceYesAfter = await getTokenbalance(aliceYes);
+            const aliceNoAfter = await getTokenbalance(aliceNo);
+            const vaultAfter = await getAccount(provider.connection, usdcVaultPda);
+            const vaultBalanceAfter = Number(vaultAfter.amount);
+            expect(aliceUsdcAfter - aliceUsdcBefore).to.equal(100 * 1_000_000);
+            expect(aliceYesAfter).to.equal(0); // Burned
+            expect(aliceNoAfter).to.equal(0); // Already 0
+            expect(vaultBalanceBefore - vaultBalanceAfter).to.equal(100 * 1_000_000);
+
+            console.log("✅ Alice claimed payout successfully");
+            await logBalances("Alice (after)", aliceUsdc, aliceYes, aliceNo);
+            console.log(`  Received: 100 USDC`);
+        })
+
+        it("Should ALlow Charli to Claim Payout (YES)",async()=>{
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+            const charlieUsdcBefore = await getTokenbalance(charlieUsdc);
+            const charliYesBalance  = getTokenbalance(charlieYes);
+
+            const vaultBefore = await getAccount(provider.connection,usdcVaultPda);
+            const vaultBalanceBefore = Number(vaultBefore.amount); 
+
+            await escrowProgram.methods.claimPayout().accounts({
+                user : charlie.publicKey,
+                // @ts-ignore
+                vault : escrowVaultPda,
+                market : marketPda,
+                usdcVault : usdcVaultPda,
+                userUsdc : charlieUsdc,
+                userYesAccount : charlieYes,
+                userNoAccount : charlieNo,
+                yesTokenMint : yesTokenMint.publicKey,
+                noTokenMint : noTokenMint.publicKey,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([charlie]).rpc();
+
+            const charlieUsdcAfter  = await getTokenbalance(charlieUsdc);
+
+            const charlieYesAfter = await getTokenbalance(charlieYes);
+
+
+            expect(charlieUsdcAfter - charlieUsdcBefore).to.equal(50 * 1_000_000);
+            expect(charlieYesAfter).to.equal(0); // Burned
+
+            console.log(" Charlie claimed payout successfully");
+            await logBalances("Charlie (after)", charlieUsdc, charlieYes, charlieNo);
+            console.log(`  Received: 50 USDC`);
+      
+        })
+
+        it("Should Not allow bob to claim (NO Losser)",async()=>{
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            const bobUsdcBefore = await  getTokenbalance(bobUsdc);
+
+            await escrowProgram.methods.claimPayout().accounts({
+                user : bob.publicKey,
+                // @ts-ignore
+                vault : escrowVaultPda,
+                usdcVault : usdcVaultPda,
+                userUsdc : bobUsdc,
+                market : marketPda,
+                userYesAccount : bobYes,
+                userNoAccount : bobNo,
+                yesTokenMint : yesTokenMint.publicKey,
+                noTokenMint : noTokenMint.publicKey,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([bob]).rpc();
+
+            const bobUsdcAfter = await getTokenbalance(bobUsdc);
+
+            const bobNoAfter  = await getTokenbalance(bobNo);
+
+            expect(bobUsdcAfter - bobUsdcBefore).to.equal(0);
+            expect(bobNoAfter).to.equal(0); // Burned
+
+            console.log(" Bob's NO tokens burned (worthless)");
+            await logBalances("Bob (after)", bobUsdc, bobYes, bobNo);
+            console.log(`  Received: 0 USDC (NO lost)`);
+        })
+
+        it("Should Verify Final Vault State",async()=>{
+            console.log("Final Vault ");
+            const vault = await escrowProgram.account.escrowVault.fetch(escrowVaultPda);
+
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+            
+            const vaultAccount = await getAccount(provider.connection,usdcVaultPda);
+            const vaultBalance = Number(vaultAccount.amount);
+
+            console.log("\nFinal State:");
+            console.log(`  Total locked: ${vault.totalLockedCollateral.toNumber() / 1_000_000} USDC`);
+            console.log(`  Actual vault balance: ${vaultBalance / 1_000_000} USDC`);
+            console.log(`  Is settled: ${vault.isSettled}`);
+            
+            expect(vault.totalLockedCollateral.toNumber()).to.equal(vaultBalance);
+            console.log(" All payouts processed correctly");
+
+        })
+    })
+
+    describe("Egde Cases and Error Handeling",()=>{
+        it("Should Failed to Mint after Market is Resolved",async()=>{
+            console.log("It should Failed TO mint after maket is settled");
+            
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            try{
+                await escrowProgram.methods.mintPairs(new anchor.BN(50)).accounts({
+                    authority : settlementWorker.publicKey,
+                    // @ts-ignore
+                    vault : usdcVaultPda,
+                    market : marketPda,
+                    usdcVault : usdcVaultPda,
+                    marketRegistryProgram: marketProgram.programId,
+                    usdcMint,
+                    hotWalletUsdc,
+                    yesTokenMint : yesTokenMint.publicKey,
+                    noTokenMint:noTokenMint.publicKey,
+                    yesRecipient : bobYes,
+                    noRecipient : charlieNo,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                }).signers([settlementWorker]).rpc();
+                expect.fail("It Should Fail the Error")
+            }catch(e){
+                console.log(" Correctly rejected minting after settlement");
+            }
+        })
+
+        it("Should Fail To Claim Payout Twice",async()=>{
+            console.log("Testing Double Claims");
+            
+            const usdcVaultPda = getAssociatedTokenAddressSync(
+                usdcMint,           // mint
+                escrowVaultPda,     // owner (the vault PDA)
+                true                // allowOwnerOffCurve (required for PDAs)
+            );
+
+            try{
+                await escrowProgram.methods.claimPayout().accounts({
+                    user : alice.publicKey,
+                    // @ts-ignore
+                    vault : escrowVaultPda,
+                    market : marketPda,
+                    usdcVault : usdcVaultPda,
+                    userUsdc : aliceUsdc,
+                    yesTokenMint : yesTokenMint.publicKey,
+                    noTokenMint: noTokenMint.publicKey,
+                    userYesAccount : aliceYes,
+                    userNoAccount : aliceNo,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                })
+            }catch(e){
+
+            }
+        })
     })
 })
+
