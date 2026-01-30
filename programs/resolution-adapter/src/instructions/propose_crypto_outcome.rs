@@ -16,7 +16,7 @@ pub struct ProposeCryptoOutcome<'info>{
     pub market : UncheckedAccount<'info>,
 
     // CPI to market program for checking Market is Expired
-    pub market_registery_program  : Program<'info,MarketRegistry>,
+    pub market_registry_program  : Program<'info,MarketRegistry>,
 
     #[account(
         mut,
@@ -65,7 +65,7 @@ pub fn handler(ctx:Context<ProposeCryptoOutcome>,pair : String,condition:PriceCo
         market : ctx.accounts.market.to_account_info()
     };
 
-    let cpi_ctx = CpiContext::new(ctx.accounts.market_registery_program.to_account_info(), cpi_account);
+    let cpi_ctx = CpiContext::new(ctx.accounts.market_registry_program.to_account_info(), cpi_account);
 
     market_registry::cpi::assert_market_expired(cpi_ctx)?;
 
