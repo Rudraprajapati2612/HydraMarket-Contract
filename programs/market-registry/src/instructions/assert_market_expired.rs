@@ -20,7 +20,7 @@ pub fn handler(ctx:Context<AssertMarketExpired>) ->Result<()>{
     );
 
     require!(
-        market.state == MarketState::Open || market.state == MarketState::Close,
+        market.state == MarketState::Open || market.state == MarketState::Resolving,
         MarketRegistryError::InvalidMarketState
     );
     Ok(())

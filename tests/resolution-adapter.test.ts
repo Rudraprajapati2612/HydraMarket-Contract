@@ -106,12 +106,13 @@ describe("Resolution Adapter Complete Test",()=>{
                 question,
                 description : `Test ${question}`,
                 category:"Crypto",
-                expireAt : new anchor.BN(futureExpiry),
+                expireAt : new anchor.BN(expiry),
                 resolutionSource:"Pyth BTC/USDC"
           };
 
         await marketProgram.methods.initializeMarket(params).accounts({
             admin : admin.publicKey,
+            // @ts-ignore
             market : marketPda,
             yesTokenMint : yesMint.publicKey,
             noTokenMint : noMint.publicKey,
@@ -211,6 +212,7 @@ describe("Resolution Adapter Complete Test",()=>{
         console.log("\n Setup complete!\n");
     })
 
+    // Done
     describe("Resolution Initilaization",()=>{
         it("It should Initialization Resolution for crypto market",async()=>{
             console.log("Initilaize crypto market Resolution ");
@@ -235,7 +237,7 @@ describe("Resolution Adapter Complete Test",()=>{
             await resolutionProgram.methods.initializeResolution({crypto:{}}).accounts({
                 authority : admin.publicKey,
                 market : market1Pda,
-                
+                // @ts-ignore
                 resolutionProposal: resolution1Pda,
                 bondVault : bondVault1,
                 bondMint : usdcMint,
@@ -301,6 +303,7 @@ describe("Resolution Adapter Complete Test",()=>{
                 await resolutionProgram.methods.initializeResolution({crypto:{}}).accounts({
                     authority : admin.publicKey,
                     market : market1Pda,
+                    // @ts-ignore
                     resolutionProposal : resolution1Pda,
                     bondVault : bondVault1,
                     bondMint : usdcMint,
@@ -317,6 +320,7 @@ describe("Resolution Adapter Complete Test",()=>{
         })
     })
 
+    // Done 
     describe("Crypto Oracle Proposal",()=>{
         before(async()=>{
             await marketProgram.methods.openMarket().accounts({
@@ -343,7 +347,7 @@ describe("Resolution Adapter Complete Test",()=>{
             const feedIds = [
               "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43" // BTC/USD
             ];
-
+            // const btcUsdPriceFeed = new PublicKey("HovQMDrbAgAYPCmHVSrezcSmkMtXSSUsLDFANExrZh2J");
             const oracle1Before = await getTokenbalance(oracle1Usdc);
             const vaultBefore = await getTokenbalance(bondVault1);
 
@@ -355,7 +359,8 @@ describe("Resolution Adapter Complete Test",()=>{
             ).accounts({
                 proposer : oracle1.publicKey,
                 market : market1Pda,
-                marketRegistryProgram : marketProgram.programId,
+                // marketRegistryProgram : marketProgram.programId,
+                // @ts-ignore
                 resolutionProposal : resolution1Pda,
                 bondVault : bondVault1,
                 proposerBondAccount : oracle1Usdc,
@@ -370,13 +375,304 @@ describe("Resolution Adapter Complete Test",()=>{
 
             const resolution = await resolutionProgram.account.resolutionProposal.fetch(resolution1Pda);
             expect(resolution.proposer.toString()).to.equal(oracle1.publicKey.toString());
-            expect(resolution.bondAmount).to.equal(1000 * 1_000_000);
+            expect(resolution.bondAmount.toNumber()).to.equal(1000 * 1_000_000);
             expect(resolution.isDisputed).to.be.false;
 
             console.log("✅ Proposal submitted");
             console.log("   Proposer:", oracle1.publicKey.toString().slice(0, 8) + "...");
             console.log("   Bond locked: 1000 USDC");
             console.log("   Dispute window: 24 hours");
+        })
+
+        it("Should Failed With Insufficient Bond", async () => {
+            console.log("Testing insufficient bond (500 USDC < 1000 minimum)");
+            
+            const marketId = new Uint8Array(32).fill(10);
+        
+            // FIX: Calculate fresh expiry time
+            const freshExpiry = Math.floor(Date.now() / 1000) + 15;
+            
+            const result = await createMarket(
+                marketId,
+                "Test Fail For Insufficient Bond",
+                freshExpiry  // Use fresh timestamp, not old shortExpiry
+            );
+        
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("resolution"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+            );
+        
+            const [bondVault] = PublicKey.findProgramAddressSync(
+                [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+            );
+        
+            await resolutionProgram.methods.initializeResolution({ crypto: {} }).accounts({
+                authority: admin.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondMint: usdcMint,
+                bondVault,
+                systemProgram: SystemProgram.programId,
+                tokenProgram: TOKEN_PROGRAM_ID,
+                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+            }).signers([admin]).rpc();
+        
+            await marketProgram.methods.openMarket().accounts({
+                admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda
+            }).signers([admin]).rpc();
+            
+            console.log("  ⏳ Waiting for market to expire (16 seconds)...");
+            await new Promise(resolve => setTimeout(resolve, 16000)); // Wait 16 seconds
+        
+
+            await marketProgram.methods.resolvingMarket().accounts({
+                admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda
+            }).signers([admin]).rpc();
+        
+            try {
+                await resolutionProgram.methods.proposeCryptoOutcome(
+                    "BTC/USDC",
+                    { greaterOrEqual: { target: new anchor.BN(100_000) } },
+                    ["0xe62df..."],
+                    new anchor.BN(500 * 1_000_000)  // Only 500 USDC (below minimum)
+                ).accounts({
+                    proposer: oracle1.publicKey,
+                    market: result.marketPda,
+                    // @ts-ignore
+                    resolutionProposal: resolutionPda,
+                    bondVault,
+                    proposerBondAccount: oracle1Usdc,
+                    tokenProgram: TOKEN_PROGRAM_ID
+                }).signers([oracle1]).rpc();
+                
+                expect.fail("Should have thrown error");
+            } catch (e) {
+                expect(e.error.errorCode.code).to.equal("InsufficientBond");
+                console.log("✓ Correctly rejected - bond too low");
+            }
+        });
+
+        it("Failed To Propose Twice",async()=>{
+            try{
+                await resolutionProgram.methods.proposeCryptoOutcome(
+                    "BTC/USDC",
+                    { greaterOrEqual: { target: new anchor.BN(100_000) } },
+                    ["fdaflsjkhflk"],
+                    new anchor.BN(1000 * 1_000_000)
+                ).accounts({
+                    proposer : oracle2.publicKey,
+                    market : market1Pda,
+                    // @ts-ignore
+                    resolutionProposal : resolution1Pda,
+                    proposerBondAccount : oracle2Usdc,
+                    bondVault : bondVault1,
+                    tokenProgram  : TOKEN_PROGRAM_ID
+                }).signers([oracle2]).rpc();
+
+                expect.fail("It hosuld Fail")
+            }catch(e){  
+                expect(e.error.errorCode.code).to.equal("ProposalAlreadyExists");
+                console.log(" Correctly rejected double proposal");
+            }
+        })
+    })
+
+
+
+    describe("Sports Oracle Proposal",()=>{
+        let sportMarketPda: PublicKey;
+        let sportResolutionPda: PublicKey;
+        let sportBondVault: PublicKey;
+
+    before(async () => {
+        console.log("Creating fresh sports market...");
+        
+        // Create a NEW market with fresh expiry
+        const marketId = new Uint8Array(32).fill(20); // Different ID
+        const freshExpiry = Math.floor(Date.now() / 1000) + 20;
+        
+        const result = await createMarket(
+            marketId,
+            "Will India Win against NZ",
+            freshExpiry
+        );
+
+        sportMarketPda = result.marketPda;
+
+        // Initialize resolution for this new market
+        [sportResolutionPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("resolution"), sportMarketPda.toBuffer()],
+            resolutionProgram.programId
+        );
+
+        [sportBondVault] = PublicKey.findProgramAddressSync(
+            [Buffer.from("bond_vault"), sportMarketPda.toBuffer()],
+            resolutionProgram.programId
+        );
+
+        await resolutionProgram.methods.initializeResolution({ sports: {} }).accounts({
+            authority: admin.publicKey,
+            market: sportMarketPda,
+            // @ts-ignore
+            resolutionProposal: sportResolutionPda,
+            bondVault: sportBondVault,
+            bondMint: usdcMint,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        }).signers([admin]).rpc();
+
+        // Open the market
+        await marketProgram.methods.openMarket().accounts({
+            admin: admin.publicKey,
+            // @ts-ignore
+            market: sportMarketPda
+        }).signers([admin]).rpc();
+
+        console.log("Waiting For Market To expire (21 Seconds)");
+        await new Promise(resolve => setTimeout(resolve, 21000));
+
+        // Move to resolving state
+        await marketProgram.methods.resolvingMarket().accounts({
+            admin: admin.publicKey,
+            // @ts-ignore
+            market: sportMarketPda
+        }).signers([admin]).rpc();
+
+        console.log("Sports market ready for resolution");
+    });
+
+        it("Should Propose Sports Outcome With multiple Data Source",async()=>{
+            const sportsData = [{
+                sourceType: { manual: {} },
+                sourceName: "RapidAPI NBA",
+                oracleAccount: null,
+                result: "India",
+                timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+            },{
+                sourceType : {manual:{}},
+                sourceName : "ESPN Info",
+                oracleAccount : null ,
+                result : "India",
+                timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),    
+            }];
+
+            await resolutionProgram.methods.proposeSportsOutcome(
+                "India Vs New zealand",
+                {winner:{}},
+                sportsData,
+                new anchor.BN(1000 * 1_000_000)
+            ).accounts({
+                proposer : oracle1.publicKey,
+                market : sportMarketPda,
+                // @ts-ignore
+                resolutionalProposal : sportResolutionPda,
+                bondVault : sportBondVault,
+                proposerBondAccount : oracle1Usdc,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([oracle1]).rpc();
+
+            const resolution = await resolutionProgram.account.resolutionProposal.fetch(sportResolutionPda);
+            expect(resolution.bondAmount.toNumber()).to.equal(1000 * 1_000_000);
+      
+            console.log(" Sports proposal submitted");
+            console.log("   Event: India vs New Zealand");
+            console.log("   Sources: 2 (RapidAPI, ESPN)");
+            console.log("   Consensus: India wins");
+        })
+
+        it("Should Failed With disaggering Data Source",async()=>{
+
+            const marketId = new Uint8Array(32).fill(31);
+            const freshExpiry = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(marketId,"Sports Market(Ind vd Nz)",freshExpiry);
+
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("resolution"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+            );
+        
+            const [bondVault] = PublicKey.findProgramAddressSync(
+                [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+            );
+
+            await resolutionProgram.methods
+            .initializeResolution({ sports: {} })
+            .accounts({
+              authority: admin.publicKey,
+              market: result.marketPda,
+              // @ts-ignore
+              resolutionProposal: resolutionPda,
+              bondVault,
+              bondMint: usdcMint,
+              systemProgram: SystemProgram.programId,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+            })
+            .signers([admin])
+            .rpc();
+
+            await marketProgram.methods.openMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : result.marketPda
+            }).signers([admin]).rpc();
+
+            console.log("Waiting For Market To expire (16 Seconds)");
+            await new Promise(resolve=>setTimeout(resolve,16000));
+            
+            await marketProgram.methods.resolvingMarket().accounts({
+                admin : admin.publicKey,
+                // @ts-ignore
+                market : result.marketPda
+            }).signers([admin]).rpc();
+
+            const conflictingData = [
+                {
+                  sourceType: { manual: {} },
+                  sourceName: "Source 1",
+                  oracleAccount: null,
+                  result: "TeamA",
+                  timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+                },
+                {
+                  sourceType: { manual: {} },
+                  sourceName: "Source 2",
+                  oracleAccount: null,
+                  result: "TeamB", // Different!
+                  timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+                },
+            ];
+
+            try{
+                await resolutionProgram.methods.proposeSportsOutcome(
+                    "Test_Event",
+                    { winner: {} },
+                    conflictingData,
+                    new anchor.BN(1000 * 1_000_000)
+                ).accounts({
+                    proposer : oracle1.publicKey,
+                    market : result.marketPda,
+                    // @ts-ignore
+                    resolutionProposal: resolutionPda,
+                    bondVault,
+                    proposerBondAccount : oracle1Usdc,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                }).signers([oracle1]).rpc();
+
+                expect.fail("It should Fail")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("DataSourceDisagreement");
+                console.log(" Correctly rejected disagreeing sources");
+            }
         })
     })
 })
