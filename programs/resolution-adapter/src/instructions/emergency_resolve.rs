@@ -1,7 +1,8 @@
+
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{Token, TokenAccount};
 use market_registry::{
-    cpi::accounts::FinalizeMarket,
+    cpi::accounts::EmergencyFinalizeMarket,
     program::MarketRegistry,
     ResultOutcome,
 };
@@ -19,11 +20,8 @@ pub struct EmergencyResolve<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
-    pub resolution_adapter: Signer<'info>,
-
     /// Market account (from MarketRegistry)
-    /// CHECK: Validated via CPI
-    #[account(mut)]
+    /// CHECK: Validated via CPI - NOT mut here, market_registry handles it
     pub market: UncheckedAccount<'info>,
 
     /// Market Registry program
@@ -47,7 +45,6 @@ pub struct EmergencyResolve<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-// ✅ CORRECT: No explicit lifetime parameters needed
 pub fn handler(
     ctx: Context<EmergencyResolve>,
     forced_outcome: ResultOutcome,
@@ -63,10 +60,6 @@ pub fn handler(
     msg!("Reason: {}", reason);
     msg!("Timestamp: {}", clock.unix_timestamp);
 
-    // Validate admin authority
-    // TODO: In production, verify admin is in allowed list or multi-sig
-    msg!("⚠️ WARNING: Emergency override by admin");
-
     // Validate reason
     require!(
         !reason.is_empty() && reason.len() <= 200,
@@ -77,46 +70,36 @@ pub fn handler(
 
     if refunded_amount > 0 {
         msg!("Bond vault balance: {} USDC", refunded_amount as f64 / 1_000_000.0);
-        msg!("All bonds will be refunded");
-
-        // Derive PDA signer
-        let resolution_seeds = &[
-            RESOLUTION_SEED,
-            resolution.market.as_ref(),
-            &[resolution.bump],
-        ];
-        let resolution_signer = &[&resolution_seeds[..]];
-
-        // TODO: Implement proper refund distribution
-        // For now, bonds remain in vault for manual distribution
         msg!("⚠️ NOTE: Bonds remain in vault for manual distribution");
         msg!("Admin must manually refund participants");
     } else {
         msg!("No bonds to refund (vault empty)");
     }
 
-    // Admin check (governance / multisig later)
-    require!(
-        ctx.accounts.admin.is_signer,
-        ResolutionError::Unauthorized
-    );
-    // Finalize market via CPI with forced outcome
-    msg!("Finalizing market with forced outcome...");
+    // Finalize market via CPI using emergency instruction
+    msg!("Calling emergency_finalize_market on MarketRegistry...");
+    
     let cpi_ctx = CpiContext::new(
         ctx.accounts.market_registry_program.to_account_info(),
-        FinalizeMarket {
-            resolution_adapter: ctx.accounts.resolution_adapter.to_account_info(),
+        EmergencyFinalizeMarket {
+            admin: ctx.accounts.admin.to_account_info(),
             market: ctx.accounts.market.to_account_info(),
         },
     );
-    market_registry::cpi::finalize_market(cpi_ctx, forced_outcome)?;
     
-    msg!("Market finalized: ✅");
+    market_registry::cpi::emergency_finalize_market(
+        cpi_ctx,
+        forced_outcome,
+        reason.clone()
+    )?;
+    
+    msg!("Market finalized via emergency procedure: ✅");
 
     // Mark resolution as finalized
     resolution.is_finalized = true;
+    resolution.is_emergency_resolved = true;
 
-    msg!("Resolution marked as finalized: ✅");
+    msg!("Resolution marked as emergency finalized: ✅");
 
     // Emit emergency resolution event
     emit!(EmergencyResolution {

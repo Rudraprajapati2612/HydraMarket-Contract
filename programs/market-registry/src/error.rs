@@ -77,4 +77,6 @@ pub enum MarketRegistryError {
 
     #[msg("Invalid escrow vault provided")]
     InvalidEscrowVault,
+    #[msg("Invalid Input parameter")]
+    InvalidInput
 }

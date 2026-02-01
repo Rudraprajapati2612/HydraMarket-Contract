@@ -1122,6 +1122,241 @@ describe("Resolution Adapter Complete Test",()=>{
     //     })
     // })
 
+    // UPDATED TEST - Emergency Resolution with Option 2
+
+// describe("Emergency Resolution", () => {
+//     let emergencyMarketPda: PublicKey;
+//     let emergencyResolutionPda: PublicKey;
+//     let emergencyBondVault: PublicKey;
+
+//     before(async () => {
+//         const marketId = new Uint8Array(32).fill(40);
+//         const expire = Math.floor(Date.now() / 1000) + 15;
+//         const result = await createMarket(marketId, "Emergency test", expire);
+//         emergencyMarketPda = result.marketPda;
+
+//         [emergencyResolutionPda] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("resolution"), emergencyMarketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         [emergencyBondVault] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("bond_vault"), emergencyMarketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         await resolutionProgram.methods
+//             .initializeResolution({ crypto: {} })
+//             .accounts({
+//                 authority: admin.publicKey,
+//                 market: emergencyMarketPda,
+//                 // @ts-ignore
+//                 resolutionProposal: emergencyResolutionPda,
+//                 bondVault: emergencyBondVault,
+//                 bondMint: usdcMint,
+//                 systemProgram: SystemProgram.programId,
+//                 tokenProgram: TOKEN_PROGRAM_ID,
+//                 rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+//             })
+//             .signers([admin])
+//             .rpc();
+
+//         await marketProgram.methods.openMarket()
+//             .accounts({
+//                 admin: admin.publicKey,
+//                 // @ts-ignore 
+//                 market: emergencyMarketPda
+//             })
+//             .signers([admin])
+//             .rpc();
+
+//         console.log("Waiting for market to expire (Emergency Resolution)...");
+//         await new Promise(resolve => setTimeout(resolve, 16000));
+
+//         await marketProgram.methods.resolvingMarket()
+//             .accounts({
+//                 admin: admin.publicKey,
+//                 // @ts-ignore
+//                 market: emergencyMarketPda
+//             })
+//             .signers([admin])
+//             .rpc();
+
+//         await resolutionProgram.methods
+//             .proposeCryptoOutcome(
+//                 "BTC/USD",
+//                 { greaterOrEqual: { target: new anchor.BN(100_000) } },
+//                 ["0xe62df..."],
+//                 new anchor.BN(1000 * 1_000_000)
+//             )
+//             .accounts({
+//                 proposer: oracle1.publicKey,
+//                 market: emergencyMarketPda,
+//                 // @ts-ignore
+//                 resolutionProposal: emergencyResolutionPda,
+//                 bondVault: emergencyBondVault,
+//                 proposerBondAccount: oracle1Usdc,
+//                 tokenProgram: TOKEN_PROGRAM_ID,
+//             })
+//             .signers([oracle1])
+//             .rpc();
+
+//         console.log("Emergency test market setup complete");
+//     });
+
+//     it("Should allow Admin emergency resolution", async () => {
+//         console.log("Admin triggering emergency resolution");
+
+//         // CHANGE: No need for resolutionAdapter signer anymore!
+//         await resolutionProgram.methods
+//             .emergencyResolve(
+//                 { invalid: {} },
+//                 "Oracle failure - manual intervention required"
+//             )
+//             .accounts({
+//                 admin: admin.publicKey,
+//                 market: emergencyMarketPda,
+//                 marketRegistryProgram: marketProgram.programId,  // ADD THIS
+//                 // @ts-ignore
+//                 resolutionProposal: emergencyResolutionPda,
+//                 bondVault: emergencyBondVault,
+//                 tokenProgram: TOKEN_PROGRAM_ID
+//             })
+//             .signers([admin])  // ONLY admin signs now!
+//             .rpc();
+
+//         const resolution = await resolutionProgram.account.resolutionProposal.fetch(emergencyResolutionPda);
+
+//         // Check resolution is finalized
+//         expect(resolution.isFinalized).to.be.true;
+//         expect(resolution.isEmergencyResolved).to.be.true;
+
+//         const market = await marketProgram.account.market.fetch(emergencyMarketPda);
+//         expect(getMarketState(market.state)).to.equal("RESOLVED");
+//         expect(market.resolutionOutcome).to.deep.equal({ invalid: {} });
+
+//         console.log("✅ Emergency resolution complete");
+//         console.log("   Forced outcome: INVALID");
+//         console.log("   Reason: Oracle failure");
+//         console.log("   Market state: RESOLVED");
+//     });
+
+//     it("Should fail emergency resolution with invalid reason", async () => {
+//         // Create another market for this test
+//         const marketId = new Uint8Array(32).fill(41);
+//         const expire = Math.floor(Date.now() / 1000) + 15;
+//         const result = await createMarket(marketId, "Test invalid reason", expire);
+
+//         const [resolutionPda] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("resolution"), result.marketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         const [bondVault] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         await resolutionProgram.methods
+//             .initializeResolution({ crypto: {} })
+//             .accounts({
+//                 authority: admin.publicKey,
+//                 market: result.marketPda,
+//                 // @ts-ignore
+//                 resolutionProposal: resolutionPda,
+//                 bondVault,
+//                 bondMint: usdcMint,
+//                 systemProgram: SystemProgram.programId,
+//                 tokenProgram: TOKEN_PROGRAM_ID,
+//                 rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+//             })
+//             .signers([admin])
+//             .rpc();
+
+//         try {
+//             await resolutionProgram.methods
+//                 .emergencyResolve(
+//                     { invalid: {} },
+//                     ""  // Empty reason - should fail
+//                 )
+//                 .accounts({
+//                     admin: admin.publicKey,
+//                     market: result.marketPda,
+//                     marketRegistryProgram: marketProgram.programId,
+//                     // @ts-ignore
+//                     resolutionProposal: resolutionPda,
+//                     bondVault,
+//                     tokenProgram: TOKEN_PROGRAM_ID
+//                 })
+//                 .signers([admin])
+//                 .rpc();
+
+//             expect.fail("Should have thrown error");
+//         } catch (e) {
+//             expect(e.error.errorCode.code).to.equal("InvalidOutcome");
+//             console.log("✓ Correctly rejected empty reason");
+//         }
+//     });
+
+//     it("Should fail emergency resolution by non-admin", async () => {
+//         // Create another market
+//         const marketId = new Uint8Array(32).fill(42);
+//         const expire = Math.floor(Date.now() / 1000) + 15;
+//         const result = await createMarket(marketId, "Test unauthorized", expire);
+
+//         const [resolutionPda] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("resolution"), result.marketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         const [bondVault] = PublicKey.findProgramAddressSync(
+//             [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+//             resolutionProgram.programId
+//         );
+
+//         await resolutionProgram.methods
+//             .initializeResolution({ crypto: {} })
+//             .accounts({
+//                 authority: admin.publicKey,
+//                 market: result.marketPda,
+//                 // @ts-ignore
+//                 resolutionProposal: resolutionPda,
+//                 bondVault,
+//                 bondMint: usdcMint,
+//                 systemProgram: SystemProgram.programId,
+//                 tokenProgram: TOKEN_PROGRAM_ID,
+//                 rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+//             })
+//             .signers([admin])
+//             .rpc();
+
+//         try {
+//             // Non-admin tries to emergency resolve
+//             await resolutionProgram.methods
+//                 .emergencyResolve(
+//                     { invalid: {} },
+//                     "Trying to hack the system"
+//                 )
+//                 .accounts({
+//                     admin: oracle1.publicKey,  // Not the admin!
+//                     market: result.marketPda,
+//                     marketRegistryProgram: marketProgram.programId,
+//                     // @ts-ignore
+//                     resolutionProposal: resolutionPda,
+//                     bondVault,
+//                     tokenProgram: TOKEN_PROGRAM_ID
+//                 })
+//                 .signers([oracle1])  // Wrong signer
+//                 .rpc();
+
+//             expect.fail("Should have thrown error");
+//         } catch (e) {
+//             // Should fail with Unauthorized error from market_registry
+//             expect(e.error.errorCode.code).to.equal("Unauthorized");
+//             console.log("✓ Correctly rejected non-admin");
+//         }
+//     });
+// });
     describe("Edge Cases",()=>{
         it("Should handle Maximum Data Sources",async()=>{
             console.log("\n Testing maximum data sources...");

@@ -9,6 +9,7 @@ pub mod assert_market_open;
 pub mod assert_market_resolved;
 pub mod resolving_market;
 pub mod assert_market_expired;
+pub mod emergency_finalize_market;
 
 
 pub use initialize_market::*;
@@ -22,3 +23,4 @@ pub use  assert_market_open::*;
 pub use  assert_market_resolved::*;
 pub use resolving_market::*;
 pub use assert_market_expired::*;
+pub use emergency_finalize_market::*;

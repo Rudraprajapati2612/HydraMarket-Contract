@@ -74,4 +74,6 @@ pub mod resolution_adapter {
     ) -> Result<()> {
         instructions::emergency_resolve::handler(ctx, forced_outcome, reason)
     }
+
+    
 }
