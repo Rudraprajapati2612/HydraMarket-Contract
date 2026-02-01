@@ -13,6 +13,9 @@ pub struct FinalizeOutcome<'info>{
     pub authority : Signer<'info>,
 
     #[account(mut)]
+    pub reward_authority: Signer<'info>,
+
+    #[account(mut)]
     /// CHECK: Validated via CPI to market_registry program
     pub market : UncheckedAccount<'info>,
 
@@ -69,7 +72,7 @@ pub fn handler(ctx:Context<FinalizeOutcome>,final_outcome : ResultOutcome)->Resu
          msg!("Accepting original proposal");
 
          winning_proposer = resolution.proposer; 
-        slashed_amount = 0;
+         slashed_amount = 0;
 
         msg!("Winner: {}", winning_proposer);
     }else {
@@ -146,7 +149,7 @@ pub fn handler(ctx:Context<FinalizeOutcome>,final_outcome : ResultOutcome)->Resu
         Transfer {
             from: ctx.accounts.protocol_treasury.to_account_info(),
             to: ctx.accounts.winner_account.to_account_info(),
-            authority: ctx.accounts.authority.to_account_info(),
+            authority: ctx.accounts.reward_authority.to_account_info(),
         },
     );
     token::transfer(reward_transfer_ctx, ORACLE_REWARD)?;

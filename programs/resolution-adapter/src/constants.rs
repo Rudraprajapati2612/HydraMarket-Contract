@@ -8,8 +8,11 @@ pub const BOND_VAULT_SEED: &[u8] = b"bond_vault";
 /// Minimum bond required to propose outcome (1000 USDC)
 pub const MIN_PROPOSAL_BOND: u64 = 1_000 * 1_000_000; // 1000 USDC with 6 decimals
 
-/// Dispute window duration (24 hours)
-pub const DISPUTE_WINDOW_SECONDS: i64 = 24 * 60 * 60;
+#[cfg(not(feature = "testing"))]
+pub const DISPUTE_WINDOW_SECONDS: i64 = 86400; // 24 hours (production)
+
+#[cfg(feature = "testing")]
+pub const DISPUTE_WINDOW_SECONDS: i64 = 10; // 10 seconds (testing)
 
 /// Extended dispute window if challenged (additional 24 hours)
 pub const DISPUTE_EXTENSION_SECONDS: i64 = 24 * 60 * 60;

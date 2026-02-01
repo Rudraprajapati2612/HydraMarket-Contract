@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { ResolutionAdapter } from "../target/types/resolution_adapter";
 import { MarketRegistry } from "../target/types/market_registry";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, createMint, getAccount, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, TokenAccountNotFoundError, calculateEpochFee, createMint, getAccount, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
 import { EscrowVault } from "../target/types/escrow_vault";
 
@@ -22,7 +22,7 @@ describe("Resolution Adapter Complete Test",()=>{
     let oracle3 : Keypair;
     let disputer : Keypair;
     let nonOracle : Keypair;
-  
+    let market1ResolutionAdapter: Keypair;
     // Market Account 
 
     let market1Pda : PublicKey;
@@ -46,7 +46,7 @@ describe("Resolution Adapter Complete Test",()=>{
     let oracle2Usdc : PublicKey;
     let oracle3Usdc : PublicKey;
     let disputerUsdc : PublicKey;
-
+    let protocolTreasuryUsdc : PublicKey;
     const nowTimestamp = Math.floor(Date.now()/1000);
     const shortExpiry = nowTimestamp + 15;
     const futureExpiry = nowTimestamp + 30 * 24 * 60 * 60;
@@ -222,7 +222,7 @@ describe("Resolution Adapter Complete Test",()=>{
             market1Pda = result.marketPda;
             market1YesMint = result.yesMint;
             market1NoMint = result.noMint;
-
+            market1ResolutionAdapter = result.resolutionAdapter;
 
             [resolution1Pda] = PublicKey.findProgramAddressSync(
                 [Buffer.from("resolution"), market1Pda.toBuffer()],
@@ -550,7 +550,7 @@ describe("Resolution Adapter Complete Test",()=>{
     });
 
         it("Should Propose Sports Outcome With multiple Data Source",async()=>{
-            const sportsData = [{
+            const sportsData = [{ 
                 sourceType: { manual: {} },
                 sourceName: "RapidAPI NBA",
                 oracleAccount: null,
@@ -674,5 +674,317 @@ describe("Resolution Adapter Complete Test",()=>{
                 console.log(" Correctly rejected disagreeing sources");
             }
         })
+    })
+
+    describe("Dispute Mechanism",()=>{
+        let disputeMarketPda : PublicKey;
+        let disputeResolutionPda : PublicKey;
+        let disputeBondVault : PublicKey;
+
+        before(async()=>{
+            // Create a new Market With Fresh Expire
+            const marketId = new Uint8Array(32).fill(25);
+            const freshExpiry = Math.floor(Date.now() / 1000) + 20;
+            const result = await createMarket(marketId,"Who Will Win",freshExpiry);
+            disputeMarketPda = result.marketPda;
+
+            [disputeResolutionPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("resolution"), disputeMarketPda.toBuffer()],
+                resolutionProgram.programId
+              );
+        
+              [disputeBondVault] = PublicKey.findProgramAddressSync(
+                [Buffer.from("bond_vault"), disputeMarketPda.toBuffer()],
+                resolutionProgram.programId
+              );
+            
+              await resolutionProgram.methods
+              .initializeResolution({ crypto: {} })
+              .accounts({
+                authority: admin.publicKey,
+                market: disputeMarketPda,
+                // @ts-ignore
+                resolutionProposal: disputeResolutionPda,
+                bondVault: disputeBondVault,
+                bondMint: usdcMint,
+                systemProgram: SystemProgram.programId,
+                tokenProgram: TOKEN_PROGRAM_ID,
+                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+              })
+              .signers([admin])
+              .rpc();
+      
+            await marketProgram.methods.openMarket()
+              .accounts({ admin: admin.publicKey, 
+                // @ts-ignore
+                market: disputeMarketPda })
+              .signers([admin])
+              .rpc();
+      
+            await marketProgram.methods.resolvingMarket()
+              .accounts({ admin: admin.publicKey, 
+                // @ts-ignore
+                market: disputeMarketPda })
+              .signers([admin])
+              .rpc();
+      
+            console.log("  ⏳ Waiting for expiry...");
+            await new Promise(resolve => setTimeout(resolve, 21000));
+            
+            await resolutionProgram.methods
+        .proposeCryptoOutcome(
+          "BTC/USD",
+          { greaterOrEqual: { target: new anchor.BN(100_000) } },
+          ["0xe62df..."],
+          new anchor.BN(1000 * 1_000_000)
+        )
+        .accounts({
+          proposer: oracle1.publicKey,
+          market: disputeMarketPda,
+          // @ts-ignore
+          resolutionProposal: disputeResolutionPda,
+          bondVault: disputeBondVault,
+          proposerBondAccount: oracle1Usdc,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([oracle1])
+        .rpc();
+
+      console.log("  Initial proposal made (YES)");
+        })
+
+        it("Should Allowed Valid Dispute",async()=>{
+            const disputerBefore = await getTokenbalance(disputerUsdc);
+            const vaultBefore = await getTokenbalance(disputeBondVault);
+
+            await resolutionProgram.methods.disputeProposal(
+                { no:{} },
+                "Price did not reach $100k",
+                new anchor.BN(1000 * 1_000_000)
+            ).accounts({
+                disputer : disputer.publicKey,
+                resolutionProposal : disputeResolutionPda,
+                bondVault : disputeBondVault,
+                disputeBonderAccount : disputerUsdc,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([disputer]).rpc();
+
+            const disputerAfter = await getTokenbalance(disputerUsdc);
+            const vaultAfter = await getTokenbalance(disputeBondVault);
+
+            expect(disputerBefore - disputerAfter).to.equal(1000 * 1_000_000);
+            expect(vaultAfter - vaultBefore).to.equal(1000 * 1_000_000);
+
+            const resolution = await resolutionProgram.account.resolutionProposal.fetch(disputeResolutionPda);
+            expect(resolution.isDisputed).to.be.true;
+            expect(resolution.disputes.length).to.equal(1);
+
+            console.log("✅ Dispute submitted");
+            console.log("   Counter-outcome: NO");
+            console.log("   Dispute bond: 1000 USDC");
+            console.log("   Dispute window extended: +24 hours");
+        })
+        // Done
+        it("Should Failed with Dispute Own Proposal",async()=>{
+            // The oracle who owns resolution can not change his desision 
+
+            console.log("Testing Self Disputed");
+            
+            try{
+                await resolutionProgram.methods.disputeProposal(
+                    {no:{}},
+                    "changed My mind",
+                    new anchor.BN(1000 * 1_000_000)
+                ).accounts({
+                    disputer : oracle1.publicKey,
+                    // @ts-ignore
+                    resolutionProposal: disputeResolutionPda,
+                    bondVault : disputeBondVault,
+                    disputeBonderAccount : oracle1Usdc,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                }).signers([oracle1]).rpc();
+                expect.fail("It will fail")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("CannotDisputeOwnProposal");
+                console.log("Own dispute is rejected sucessfully");
+            }
+        })
+
+        it("Should fail with insufficient Dispute bond",async()=>{
+            try{
+                await resolutionProgram.methods.disputeProposal(
+                    {no:{}},
+                    "Fails With Insuffucient Bond amount",
+                    new anchor.BN(500 * 1_000_000)
+                ).accounts({
+                    disputer : oracle2.publicKey,
+                    // @ts-ignore
+                    resolutionProposal : disputeResolutionPda,
+                    bondVault : disputeBondVault,
+                    disputeBonderAccount : oracle2Usdc,
+                    tokenProgram : TOKEN_PROGRAM_ID
+                }).signers([oracle2]).rpc();
+                expect.fail("It should Fail Error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("InsufficientDisputeBond");
+                console.log("Insufficient Bond is rejected correctly");
+            }
+        })
+    })
+
+    describe("Finalize Market",()=>{
+        let protocolTreasury: PublicKey;  // Add this variable
+
+    before(async () => {
+        // Create protocol treasury USDC account (owned by admin)
+        const treasuryAccount = await getOrCreateAssociatedTokenAccount(
+            provider.connection,
+            admin,
+            usdcMint,
+            admin.publicKey  // Treasury owned by admin
+        );
+        
+        protocolTreasuryUsdc = treasuryAccount.address;
+
+        // Fund the treasury with USDC for rewards
+        // ORACLE_REWARD in your Rust code is the reward amount
+        // Make sure treasury has enough USDC to pay rewards
+        await mintTo(
+            provider.connection,
+            admin,
+            usdcMint,
+            protocolTreasuryUsdc,
+            admin,
+            100_000 * 1_000_000  // 100,000 USDC for rewards
+        );
+
+        console.log("Protocol Treasury:", protocolTreasuryUsdc.toString());
+        console.log("Treasury funded with 100,000 USDC for rewards");
+    });
+        it("Should Finalize Indispute proposal",async()=>{
+            console.log("Finlaizing Undisputed proposal");
+            
+            const oracle1Before = await getTokenbalance(oracle1Usdc);
+
+            await resolutionProgram.methods.finalizeOutcome({yes:{}}).accounts({
+                authority : market1ResolutionAdapter.publicKey,
+                rewardAuthority : admin.publicKey,
+                market : market1Pda,
+                resolutionProposal : resolution1Pda,
+
+                bondVault : bondVault1,
+                winnerAccount : oracle1Usdc,
+                protocolTreasury : protocolTreasuryUsdc,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([market1ResolutionAdapter,admin]).rpc();
+            const oracle1After = await getTokenbalance(oracle1Usdc);
+            const expectedReturn = 1000 * 1_000_000 + 100 * 1_000_000;
+            expect(oracle1After - oracle1Before).to.equal(expectedReturn);
+            
+            const resolution = await resolutionProgram.account.resolutionProposal.fetch(resolution1Pda);
+            expect(resolution.isFinalized).to.be.true;
+            
+            const market = await marketProgram.account.market.fetch(market1Pda);
+            expect(getMarketState(market.state)).to.equal("RESOLVED");
+            expect(market.resolutionOutcome).to.deep.equal({ yes: {} });
+            
+            console.log("✅ Finalized successfully");
+            console.log("   Oracle received: 1100 USDC (bond + reward)");
+            console.log("   Market state: RESOLVED");
+            console.log("   Outcome: YES");
+
+        })
+
+        it("Should Failed to finlaize Before Dispute Window",async()=>{
+            //  Create a new Market , Resolution PDA , Bond Vault, Initialize a resolution with Crypto  
+            const marketId = new Uint8Array(32).fill(26);
+            const expire = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(marketId,"Failed To Finalize",expire);
+            
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("resolution"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+              );
+        
+              const [bondVault] = PublicKey.findProgramAddressSync(
+                [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+                resolutionProgram.programId
+              );
+        
+              await resolutionProgram.methods
+                .initializeResolution({ crypto: {} })
+                .accounts({
+                  authority: admin.publicKey,
+                  
+                  market: result.marketPda,
+                  // @ts-ignore
+                  resolutionProposal: resolutionPda,
+                  bondVault,
+                  bondMint: usdcMint,
+                  systemProgram: SystemProgram.programId,
+                  tokenProgram: TOKEN_PROGRAM_ID,
+                  rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                })
+                .signers([admin])
+                .rpc();
+        
+              await marketProgram.methods.openMarket()
+                .accounts({ 
+                    admin: admin.publicKey, 
+                    // @ts-ignore
+                    market: result.marketPda 
+                })
+                .signers([admin])
+                .rpc();
+                
+                console.log("Wait For 16 Second to Expire the market");
+            
+                await new Promise(r => setTimeout(r, 16000));
+              await marketProgram.methods.resolvingMarket()
+                .accounts({ 
+                    admin: admin.publicKey,
+                    //@ts-ignore 
+                    market: result.marketPda
+                 })
+                .signers([admin])
+                .rpc();
+            //  Propose Crypto Outcome 
+
+            await resolutionProgram.methods.proposeCryptoOutcome(
+                "BTC/USD",
+                { greaterOrEqual: { target: new anchor.BN(100_000) } },
+                ["0xe62df..."],
+                new anchor.BN(1000 * 1_000_000)
+            ).accounts({
+                proposer: oracle1.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondVault,
+                proposerBondAccount: oracle1Usdc,
+                tokenProgram: TOKEN_PROGRAM_ID,
+            }).signers([oracle1]).rpc();
+           
+            try{
+                await resolutionProgram.methods.finalizeOutcome({yes:{}}).accounts({
+                    authority : result.resolutionAdapter.publicKey,
+                    rewardAuthority : admin.publicKey,
+                    resolutionProposal : resolutionPda,
+
+                    market : result.marketPda,
+                    bondVault : bondVault,
+                    winnerAccount : oracle1Usdc,
+                    protocolTreasury : protocolTreasuryUsdc,
+                    tokenProgram : TOKEN_PROGRAM_ID
+
+                }).signers([result.resolutionAdapter,admin]).rpc();
+                expect.fail("It should Throw Error")
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("DisputeWindowOpen");
+                console.log("Correctly reject the finalize before the dispute window");
+                
+            }
+        })
+
     })
 })
