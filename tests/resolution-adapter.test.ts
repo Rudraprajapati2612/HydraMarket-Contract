@@ -763,6 +763,7 @@ describe("Resolution Adapter Complete Test",()=>{
                 new anchor.BN(1000 * 1_000_000)
             ).accounts({
                 disputer : disputer.publicKey,
+                // @ts-ignore
                 resolutionProposal : disputeResolutionPda,
                 bondVault : disputeBondVault,
                 disputeBonderAccount : disputerUsdc,
@@ -870,8 +871,8 @@ describe("Resolution Adapter Complete Test",()=>{
                 authority : market1ResolutionAdapter.publicKey,
                 rewardAuthority : admin.publicKey,
                 market : market1Pda,
+                // @ts-ignore
                 resolutionProposal : resolution1Pda,
-
                 bondVault : bondVault1,
                 winnerAccount : oracle1Usdc,
                 protocolTreasury : protocolTreasuryUsdc,
@@ -969,8 +970,8 @@ describe("Resolution Adapter Complete Test",()=>{
                 await resolutionProgram.methods.finalizeOutcome({yes:{}}).accounts({
                     authority : result.resolutionAdapter.publicKey,
                     rewardAuthority : admin.publicKey,
+                    // @ts-ignore
                     resolutionProposal : resolutionPda,
-
                     market : result.marketPda,
                     bondVault : bondVault,
                     winnerAccount : oracle1Usdc,
@@ -986,5 +987,483 @@ describe("Resolution Adapter Complete Test",()=>{
             }
         })
 
+        it("Should Fail To finalize Twice",async()=>{
+            console.log("Faile to Finalize Twice");
+            
+
+          try{
+            await resolutionProgram.methods.finalizeOutcome({yes:{}}).accounts({
+                authority : market1ResolutionAdapter.publicKey,
+                rewardAuthority : admin.publicKey,
+                market: market1Pda,
+                // @ts-ignore
+                resolutionProposal : resolution1Pda,
+                bondVault : bondVault1,
+                winnerAccount : oracle1Usdc,
+                protocolTreasury : protocolTreasuryUsdc,
+                tokenProgram : TOKEN_PROGRAM_ID
+            }).signers([admin,market1ResolutionAdapter]).rpc();
+
+            expect.fail("It should be Fail")
+          }catch(e){
+            expect(e.error.errorCode.code).to.equal("AlreadyFinalized");
+            console.log("Correctly rejected ");
+            
+          }
+        })
+    })
+
+    // describe("Emergency Resolution",()=>{
+    //     let emergencyMarketPda : PublicKey;
+    //     let emergencyResolutionPda : PublicKey;
+    //     let emergencyBondVault : PublicKey;
+    //     let emergencyResolutionAdapter : Keypair;
+    //     before(async()=>{
+    //         const marketId = new Uint8Array(32).fill(40);
+    //         const expire = Math.floor(Date.now() / 1000) + 15;
+    //         const result = await createMarket(marketId, "Emergency test", expire);
+    //         emergencyMarketPda = result.marketPda;
+    //         emergencyResolutionAdapter = result.resolutionAdapter;
+
+    //         [emergencyResolutionPda] = PublicKey.findProgramAddressSync(
+    //           [Buffer.from("resolution"), emergencyMarketPda.toBuffer()],
+    //           resolutionProgram.programId
+    //         );
+      
+    //         [emergencyBondVault] = PublicKey.findProgramAddressSync(
+    //           [Buffer.from("bond_vault"), emergencyMarketPda.toBuffer()],
+    //           resolutionProgram.programId
+    //         );
+
+    //         await resolutionProgram.methods
+    //         .initializeResolution({ crypto: {} })
+    //         .accounts({
+    //           authority: admin.publicKey,
+    //           market: emergencyMarketPda,
+    //           // @ts-ignore
+    //           resolutionProposal: emergencyResolutionPda,
+    //           bondVault: emergencyBondVault,
+    //           bondMint: usdcMint,
+    //           systemProgram: SystemProgram.programId,
+    //           tokenProgram: TOKEN_PROGRAM_ID,
+    //           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+    //         })
+    //         .signers([admin])
+    //         .rpc();
+
+    //             await marketProgram.methods.openMarket()
+    //         .accounts({ 
+    //             admin: admin.publicKey,
+    //             // @ts-ignore 
+    //             market: emergencyMarketPda
+    //          })
+    //         .signers([admin])
+    //         .rpc();
+    //         console.log("Waiting for market to expire Emergency Resolution ");
+    //         await new Promise(resolve => setTimeout(resolve, 16000));
+
+    //         await marketProgram.methods.resolvingMarket()
+    //           .accounts({
+    //              admin: admin.publicKey,
+    //             // @ts-ignore
+    //              market: emergencyMarketPda 
+    //             })
+    //           .signers([admin])
+    //           .rpc();
+
+            
+    //           await resolutionProgram.methods
+    //           .proposeCryptoOutcome(
+    //             "BTC/USD",
+    //             { greaterOrEqual: { target: new anchor.BN(100_000) } },
+    //             ["0xe62df..."],
+    //             new anchor.BN(1000 * 1_000_000)
+    //           )
+    //           .accounts({
+    //             proposer: oracle1.publicKey,
+    //             market: emergencyMarketPda,
+    //             // @ts-ignore
+    //             resolutionProposal: emergencyResolutionPda,
+    //             bondVault: emergencyBondVault,
+    //             proposerBondAccount: oracle1Usdc,
+    //             tokenProgram: TOKEN_PROGRAM_ID,
+    //           })
+    //           .signers([oracle1])
+    //           .rpc();
+    //     })
+
+    //     it("Should allow Admin emergency resolution",async()=>{
+    //         console.log("admin triger emergency Resolution");
+            
+    //         await resolutionProgram.methods.emergencyResolve(
+    //             { invalid: {} },
+    //             "Oracle failure - manual intervention required"
+    //         ).accounts({
+    //             admin : admin.publicKey,
+    //             market : emergencyMarketPda,
+    //             resolutionAdapter: emergencyResolutionAdapter.publicKey,
+    //             // @ts-ignore
+    //             resolutionProposal : emergencyResolutionPda,
+    //             bondVault : emergencyBondVault,
+    //             tokenProgram : TOKEN_PROGRAM_ID
+    //         }).signers([admin,emergencyResolutionAdapter]).rpc();
+
+    //         const resolution = await resolutionProgram.account.resolutionProposal.fetch(emergencyResolutionPda);
+
+    //         expect(resolution.isDisputed).to.be.true;
+
+    //         const market = await marketProgram.account.market.fetch(emergencyMarketPda);
+    //         expect(getMarketState(market.state)).to.equal("RESOLVED");
+    //         expect(market.resolutionOutcome).to.deep.equal({ invalid: {} });
+                
+    //         console.log("✅ Emergency resolution complete");
+    //         console.log("   Forced outcome: INVALID");
+    //         console.log("   Reason: Oracle failure");
+    //     })
+    // })
+
+    describe("Edge Cases",()=>{
+        it("Should handle Maximum Data Sources",async()=>{
+            console.log("\n Testing maximum data sources...");
+
+            const marketId = new Uint8Array(32).fill(50);
+            const expire = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(marketId, "Max sources test", expire);
+      
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+              [Buffer.from("resolution"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            const [bondVault] = PublicKey.findProgramAddressSync(
+              [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            await resolutionProgram.methods
+              .initializeResolution({ sports: {} })
+              .accounts({
+                authority: admin.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondVault,
+                bondMint: usdcMint,
+                systemProgram: SystemProgram.programId,
+                tokenProgram: TOKEN_PROGRAM_ID,
+                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+              })
+              .signers([admin])
+              .rpc();
+      
+            await marketProgram.methods.openMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+              console.log("Wait For 16 Sec to resolve the market Edge Cases");
+              
+              console.log("Waiting for market to expire");
+              
+              await new Promise(resolve => setTimeout(resolve, 16000));
+            
+              await marketProgram.methods.resolvingMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+      
+            
+      
+            const fiveSources = Array(5).fill(null).map((_, i) => ({
+              sourceType: { manual: {} },
+              sourceName: `Source ${i + 1}`,
+              oracleAccount: null,
+              result: "TeamA",
+              timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+            }));
+
+            // Proposse Sports Outcome 
+            await resolutionProgram.methods.proposeSportsOutcome(
+                "Test_Event",
+                { winner: {} },
+                fiveSources,
+                new anchor.BN(1000 * 1_000_000)
+            ).accounts({
+                proposer: oracle1.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondVault,
+                proposerBondAccount: oracle1Usdc,
+                tokenProgram: TOKEN_PROGRAM_ID,
+            }).signers([oracle1]).rpc();
+
+            const resolution = await resolutionProgram.account.resolutionProposal.fetch(resolutionPda);
+
+            expect(resolution.dataSource.length).to.equal(5);
+            console.log("5 Data is handle Sucessfully");
+            
+        })
+
+        it("Should Failed with To Many Data Sources",async()=>{
+            console.log("\n Testing maximum data sources...");
+
+            const marketId = new Uint8Array(32).fill(51);
+            const expire = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(marketId, "Max sources test", expire);
+      
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+              [Buffer.from("resolution"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            const [bondVault] = PublicKey.findProgramAddressSync(
+              [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            await resolutionProgram.methods
+              .initializeResolution({ sports: {} })
+              .accounts({
+                authority: admin.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondVault,
+                bondMint: usdcMint,
+                systemProgram: SystemProgram.programId,
+                tokenProgram: TOKEN_PROGRAM_ID,
+                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+              })
+              .signers([admin])
+              .rpc();
+      
+            await marketProgram.methods.openMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+              console.log("Wait For 16 Sec to resolve the market Edge Cases With Data source length 6 ");
+              
+              
+              await new Promise(resolve => setTimeout(resolve, 16000));
+            
+              await marketProgram.methods.resolvingMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+      
+            
+      
+            const sixSources = Array(6).fill(null).map((_, i) => ({
+              sourceType: { manual: {} },
+              sourceName: `Source ${i + 1}`,
+              oracleAccount: null,
+              result: "TeamA",
+              timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
+            }));
+
+            try{    
+                await resolutionProgram.methods
+                .proposeSportsOutcome(
+                  "Test_Event",
+                  { winner: {} },
+                  sixSources,
+                  new anchor.BN(1000 * 1_000_000)
+                )
+                .accounts({
+                  proposer: oracle1.publicKey,
+                  market: result.marketPda, 
+                  // @ts-ignore
+                  resolutionProposal: resolutionPda,
+                  bondVault,
+                  proposerBondAccount: oracle1Usdc,
+                  tokenProgram: TOKEN_PROGRAM_ID,
+                })
+                .signers([oracle1])
+                .rpc();
+      
+              expect.fail("Should have thrown error");
+            }catch(e){
+                expect(e.error.errorCode.code).to.equal("TooManyDataSources");
+                console.log("✅ Correctly rejected 6 sources");
+            }
+        })
+
+        it("Should handle maximum 3 Disputes",async()=>{
+            console.log("\n Testing maximum data sources...");
+
+            const marketId = new Uint8Array(32).fill(95);
+            const expire = Math.floor(Date.now() / 1000) + 15;
+            const result = await createMarket(marketId, "Max sources test", expire);
+      
+            const [resolutionPda] = PublicKey.findProgramAddressSync(
+              [Buffer.from("resolution"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            const [bondVault] = PublicKey.findProgramAddressSync(
+              [Buffer.from("bond_vault"), result.marketPda.toBuffer()],
+              resolutionProgram.programId
+            );
+      
+            await resolutionProgram.methods
+              .initializeResolution({ crypto: {} })
+              .accounts({
+                authority: admin.publicKey,
+                market: result.marketPda,
+                // @ts-ignore
+                resolutionProposal: resolutionPda,
+                bondVault,
+                bondMint: usdcMint,
+                systemProgram: SystemProgram.programId,
+                tokenProgram: TOKEN_PROGRAM_ID,
+                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+              })
+              .signers([admin])
+              .rpc();
+      
+            await marketProgram.methods.openMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+              console.log("Wait For 16 Sec to resolve the market Edge Cases");
+              
+              console.log("Waiting for market to expire");
+              
+              await new Promise(resolve => setTimeout(resolve, 16000));
+            
+              await marketProgram.methods.resolvingMarket()
+              .accounts({ admin: admin.publicKey,
+                // @ts-ignore
+                market: result.marketPda })
+              .signers([admin])
+              .rpc();
+            
+
+               // Initial proposal
+            await resolutionProgram.methods
+            .proposeCryptoOutcome(
+              "BTC/USD",
+              { greaterOrEqual: { target: new anchor.BN(100_000) } },
+              ["0xe62df..."],
+              new anchor.BN(1000 * 1_000_000)
+            )
+            .accounts({
+              proposer: oracle1.publicKey,
+              market: result.marketPda,
+              // @ts-ignore
+              resolutionProposal: resolutionPda,
+              bondVault,
+              proposerBondAccount: oracle1Usdc,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .signers([oracle1])
+            .rpc();
+
+            // Dispute 1 = oracle 2
+            
+            await resolutionProgram.methods
+        .disputeProposal(
+          { no: {} },
+          "Dispute 1",
+          new anchor.BN(1000 * 1_000_000)
+        )
+        .accounts({
+          disputer: oracle2.publicKey,
+          
+          // @ts-ignore
+          resolutionProposal: resolutionPda,
+          bondVault,
+          disputeBonderAccount: oracle2Usdc,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([oracle2])
+        .rpc();
+
+              // Dispute 2
+      await resolutionProgram.methods
+      .disputeProposal(
+        { invalid: {} },
+        "Dispute 2",
+        new anchor.BN(1000 * 1_000_000)
+      )
+      .accounts({
+        disputer: oracle3.publicKey,
+        // @ts-ignore
+        resolutionProposal: resolutionPda,
+        bondVault,
+        disputeBonderAccount: oracle3Usdc,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([oracle3])
+      .rpc();
+
+    // Dispute 3
+    await resolutionProgram.methods
+      .disputeProposal(
+        { yes: {} },
+        "Dispute 3",
+        new anchor.BN(1000 * 1_000_000)
+      )
+      .accounts({
+        disputer: disputer.publicKey,
+        // @ts-ignore
+        resolutionProposal: resolutionPda,
+        bondVault,
+        disputeBonderAccount: disputerUsdc,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([disputer])
+      .rpc();
+
+        const resolution = await resolutionProgram.account.resolutionProposal.fetch(resolutionPda);
+        expect(resolution.disputes.length).to.equal(3);
+
+        console.log("✅ Accepted 3 disputes");
+        })
+    })
+
+    describe("Query and Verification",()=>{
+        it("Should fetch all resolution proposals", async () => {
+            console.log("\n📋 Fetching all resolutions...");
+      
+            const allResolutions = await resolutionProgram.account.resolutionProposal.all();
+      
+            console.log(`\nTotal resolutions: ${allResolutions.length}`);
+            allResolutions.slice(0, 5).forEach((res, i) => {
+              console.log(`\nResolution ${i + 1}:`);
+              console.log("  Address:", res.publicKey.toString());
+              console.log("  Market:", res.account.market.toString());
+              console.log("  Category:", res.account.category.crypto ? "Crypto" : "Sports");
+              console.log("  Bond:", res.account.bondAmount.toNumber() / 1_000_000, "USDC");
+              console.log("  Disputed:", res.account.isDisputed);
+              console.log("  Finalized:", res.account.isFinalized);
+            });
+      
+            expect(allResolutions.length).to.be.greaterThan(0);
+        });
+
+        it("Should verify final vault balances", async () => {
+            console.log("\n💰 Verifying vault balances...");
+      
+            const vault1Balance = await getTokenbalance(bondVault1);
+            const vault2Balance = await getTokenbalance(bondVault2);
+      
+            console.log(`\nBond Vault 1: ${vault1Balance / 1_000_000} USDC`);
+            console.log(`Bond Vault 2: ${vault2Balance / 1_000_000} USDC`);
+      
+            // Vaults should have remaining bonds from disputed/unfinaliz markets
+            expect(vault1Balance).to.be.greaterThanOrEqual(0);
+            expect(vault2Balance).to.be.greaterThanOrEqual(0);
+        });
     })
 })

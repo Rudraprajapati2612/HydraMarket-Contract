@@ -19,6 +19,8 @@ pub struct EmergencyResolve<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
+    pub resolution_adapter: Signer<'info>,
+
     /// Market account (from MarketRegistry)
     /// CHECK: Validated via CPI
     #[account(mut)]
@@ -93,17 +95,22 @@ pub fn handler(
         msg!("No bonds to refund (vault empty)");
     }
 
+    // Admin check (governance / multisig later)
+    require!(
+        ctx.accounts.admin.is_signer,
+        ResolutionError::Unauthorized
+    );
     // Finalize market via CPI with forced outcome
     msg!("Finalizing market with forced outcome...");
     let cpi_ctx = CpiContext::new(
         ctx.accounts.market_registry_program.to_account_info(),
         FinalizeMarket {
-            resolution_adapter: ctx.accounts.admin.to_account_info(),
+            resolution_adapter: ctx.accounts.resolution_adapter.to_account_info(),
             market: ctx.accounts.market.to_account_info(),
         },
     );
     market_registry::cpi::finalize_market(cpi_ctx, forced_outcome)?;
-
+    
     msg!("Market finalized: ✅");
 
     // Mark resolution as finalized
